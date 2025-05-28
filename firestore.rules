@@ -1,0 +1,45 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow reads to any authenticated user.  Writes require authentication.
+    match /{document=**} {
+      allow read: if request.auth != null;
+      allow write: if false;  // Default deny-all policy.  Writes handled below.
+    }
+
+    // Users collection: Only allow authenticated users to create/read/update their own profile.
+    match /users/{userId} {
+      allow get: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow update: if request.auth != null && request.auth.uid == userId;
+      allow delete: if false; // Prevent user deletion
+    }
+
+    // Income subcollection: Allow users to create, read, update, and delete their own income records.
+    match /users/{userId}/incomes/{incomeId} {
+      allow read, create, update, delete: if request.auth != null && request.auth.uid == userId;
+
+      // Validate income data on create/update
+      allow create, update: if request.resource.data.userId == userId &&
+                                request.resource.data.keys().hasAll(['amount', 'date', 'description']);
+    }
+
+    // Expenses subcollection: Allow users to create, read, update, and delete their own expense records.
+    match /users/{userId}/expenses/{expenseId} {
+      allow read, create, update, delete: if request.auth != null && request.auth.uid == userId;
+
+      // Validate expense data on create/update
+      allow create, update: if request.resource.data.userId == userId &&
+                                request.resource.data.keys().hasAll(['amount', 'date', 'description']);
+    }
+
+    // Appointments subcollection: Allow users to create, read, update, and delete their own appointment records.
+    match /users/{userId}/appointments/{appointmentId} {
+      allow read, create, update, delete: if request.auth != null && request.auth.uid == userId;
+
+      // Validate appointment data on create/update
+      allow create, update: if request.resource.data.userId == userId &&
+                                request.resource.data.keys().hasAll(['title', 'startTime', 'endTime']);
+    }
+  }
+}

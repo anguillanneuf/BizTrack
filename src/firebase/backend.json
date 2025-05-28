@@ -1,0 +1,295 @@
+{
+  "entities": {
+    "User": {
+      "$schema": "http://json-schema.org/draft-07/schema",
+      "title": "User",
+      "description": "Represents a user of the BizTrack ERP system.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the User entity. The specific format and generation strategy depend on the target database implementation."
+        },
+        "username": {
+          "type": "string",
+          "description": "The user's username for logging in."
+        },
+        "passwordHash": {
+          "type": "string",
+          "description": "Hashed password for secure authentication."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "The user's email address."
+        },
+        "firstName": {
+          "type": "string",
+          "description": "The user's first name."
+        },
+        "lastName": {
+          "type": "string",
+          "description": "The user's last name."
+        },
+        "companyName": {
+          "type": "string",
+          "description": "The name of the company the user belongs to. Optional."
+        },
+        "role": {
+          "type": "string",
+          "description": "The user's role or permissions within the system (e.g., admin, employee). Optional.",
+          "enum": [
+            "admin",
+            "employee"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "username",
+        "passwordHash",
+        "email"
+      ]
+    },
+    "Income": {
+      "$schema": "http://json-schema.org/draft-07/schema",
+      "title": "Income",
+      "description": "Represents a record of income received.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Income entity. The specific format and generation strategy depend on the target database implementation."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to the unique identifier of the related User entity who recorded the income. (Relationship: User 1:N Income)"
+        },
+        "amount": {
+          "type": "number",
+          "description": "The amount of income received."
+        },
+        "date": {
+          "type": "string",
+          "format": "date",
+          "description": "The date the income was received."
+        },
+        "description": {
+          "type": "string",
+          "description": "A description of the income source or purpose."
+        },
+        "category": {
+          "type": "string",
+          "description": "Category of income (e.g., sales, service, investment). Optional."
+        },
+        "paymentMethod": {
+          "type": "string",
+          "description": "The method of payment received (e.g., cash, credit card, bank transfer). Optional."
+        },
+        "referenceNumber": {
+          "type": "string",
+          "description": "Optional reference number (e.g. Invoice Number). Optional."
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "amount",
+        "date",
+        "description"
+      ]
+    },
+    "Expense": {
+      "$schema": "http://json-schema.org/draft-07/schema",
+      "title": "Expense",
+      "description": "Represents a record of an expense incurred.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Expense entity. The specific format and generation strategy depend on the target database implementation."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to the unique identifier of the related User entity who recorded the expense. (Relationship: User 1:N Expense)"
+        },
+        "amount": {
+          "type": "number",
+          "description": "The amount of the expense."
+        },
+        "date": {
+          "type": "string",
+          "format": "date",
+          "description": "The date the expense was incurred."
+        },
+        "description": {
+          "type": "string",
+          "description": "A description of the expense."
+        },
+        "category": {
+          "type": "string",
+          "description": "Category of expense (e.g., rent, utilities, supplies). Optional."
+        },
+        "paymentMethod": {
+          "type": "string",
+          "description": "The method of payment used (e.g., cash, credit card, bank transfer). Optional."
+        },
+        "vendor": {
+          "type": "string",
+          "description": "The vendor or supplier the expense was paid to. Optional."
+        },
+        "referenceNumber": {
+          "type": "string",
+          "description": "Optional reference number (e.g. Invoice Number). Optional."
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "amount",
+        "date",
+        "description"
+      ]
+    },
+    "Appointment": {
+      "$schema": "http://json-schema.org/draft-07/schema",
+      "title": "Appointment",
+      "description": "Represents a scheduled appointment.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Appointment entity. The specific format and generation strategy depend on the target database implementation."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to the unique identifier of the related User entity who scheduled the appointment. (Relationship: User 1:N Appointment)"
+        },
+        "title": {
+          "type": "string",
+          "description": "The title or subject of the appointment."
+        },
+        "startTime": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The date and time the appointment starts."
+        },
+        "endTime": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The date and time the appointment ends."
+        },
+        "location": {
+          "type": "string",
+          "description": "The location of the appointment. Optional."
+        },
+        "description": {
+          "type": "string",
+          "description": "A description or notes about the appointment. Optional."
+        },
+        "attendees": {
+          "type": "array",
+          "description": "An array of user ids attending the appointment. (Relationship: Appointment N:N User)",
+          "items": {
+            "type": "string",
+            "description": "Reference to the unique identifier of a related User entity."
+          }
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "title",
+        "startTime",
+        "endTime"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "definition": {
+          "description": "Collection containing individual user profile documents.",
+          "entityName": "User",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "params": [
+            {
+              "description": "The unique ID of the user.",
+              "name": "userId"
+            }
+          ]
+        },
+        "path": "/users/{userId}"
+      },
+      {
+        "definition": {
+          "description": "Subcollection containing income records for a specific user.",
+          "entityName": "Income",
+          "schema": {
+            "$ref": "#/backend/entities/Income"
+          },
+          "params": [
+            {
+              "description": "The ID of the user who recorded the income.",
+              "name": "userId"
+            },
+            {
+              "description": "The unique ID of the income record.",
+              "name": "incomeId"
+            }
+          ]
+        },
+        "path": "/users/{userId}/incomes/{incomeId}"
+      },
+      {
+        "definition": {
+          "description": "Subcollection containing expense records for a specific user.",
+          "entityName": "Expense",
+          "schema": {
+            "$ref": "#/backend/entities/Expense"
+          },
+          "params": [
+            {
+              "description": "The ID of the user who recorded the expense.",
+              "name": "userId"
+            },
+            {
+              "description": "The unique ID of the expense record.",
+              "name": "expenseId"
+            }
+          ]
+        },
+        "path": "/users/{userId}/expenses/{expenseId}"
+      },
+      {
+        "definition": {
+          "description": "Subcollection containing appointment records for a specific user.",
+          "entityName": "Appointment",
+          "schema": {
+            "$ref": "#/backend/entities/Appointment"
+          },
+          "params": [
+            {
+              "description": "The ID of the user who scheduled the appointment.",
+              "name": "userId"
+            },
+            {
+              "description": "The unique ID of the appointment record.",
+              "name": "appointmentId"
+            }
+          ]
+        },
+        "path": "/users/{userId}/appointments/{appointmentId}"
+      }
+    ],
+    "reasoning": "Based on the entities provided and the app proposal, the following Firestore collections are recommended:\n\n*   **users**: Stores user profile information. Key fields include `id`, `username`, `email`, `firstName`, `lastName`, and `role`.\n*   **incomes**: Stores income records for each user. Key fields include `id`, `userId`, `amount`, `date`, and `description`. Documents should be stored under collection `users/{userId}/incomes/{incomeId}`.\n*   **expenses**: Stores expense records for each user. Key fields include `id`, `userId`, `amount`, `date`, and `description`. Documents should be stored under collection `users/{userId}/expenses/{expenseId}`.\n*   **appointments**: Stores appointment records for each user. Key fields include `id`, `userId`, `title`, `startTime`, and `endTime`. Documents should be stored under collection `users/{userId}/appointments/{appointmentId}`."
+  }
+}
