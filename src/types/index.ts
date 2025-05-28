@@ -53,7 +53,7 @@ export const AppointmentSchema = z.object({
   startTime: z.string().refine((val) => !isNaN(Date.parse(val)), { message: "Invalid start time" }), // ISO string
   endTime: z.string().refine((val) => !isNaN(Date.parse(val)), { message: "Invalid end time" }), // ISO string
   location: z.string().optional(),
-  description: z.string().optional().max(500, "Description too long."),
+  description: z.string().max(500, "Description too long.").optional(),
   attendees: z.array(z.string()).optional(), // Array of user emails or IDs
   createdAt: z.any().optional(), // Firestore ServerTimestamp
   updatedAt: z.any().optional(), // Firestore ServerTimestamp
