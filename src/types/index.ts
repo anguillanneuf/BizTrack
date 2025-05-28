@@ -1,3 +1,4 @@
+
 import { z } from 'zod';
 
 // Schema for user profile data stored in Firestore
@@ -45,23 +46,27 @@ export const ExpenseSchema = z.object({
 });
 export type Expense = z.infer<typeof ExpenseSchema>;
 
-// Schema for Appointment
-export const AppointmentSchema = z.object({
+// Base Schema for Appointment (ZodObject)
+const AppointmentBaseSchema = z.object({
   id: z.string().optional(), // Firestore document ID, optional on create
   userId: z.string().min(1, "User ID is required."),
   title: z.string().min(1, "Title is required.").max(100, "Title too long."),
   startTime: z.string().refine((val) => !isNaN(Date.parse(val)), { message: "Invalid start time" }), // ISO string
   endTime: z.string().refine((val) => !isNaN(Date.parse(val)), { message: "Invalid end time" }), // ISO string
   location: z.string().optional(),
-  description: z.string().max(500, "Description too long.").optional(),
+  description: z.string().max(500, "Description too long.").optional(), // Max length before optional
   attendees: z.array(z.string()).optional(), // Array of user emails or IDs
   createdAt: z.any().optional(), // Firestore ServerTimestamp
   updatedAt: z.any().optional(), // Firestore ServerTimestamp
-}).refine(data => new Date(data.endTime) > new Date(data.startTime), {
+});
+
+// Schema for Appointment data (with refinement)
+export const AppointmentSchema = AppointmentBaseSchema.refine(data => new Date(data.endTime) > new Date(data.startTime), {
   message: "End time must be after start time.",
   path: ["endTime"], // Path to the field that gets the error
 });
 export type Appointment = z.infer<typeof AppointmentSchema>;
+
 
 // Schemas for forms (without userId, id, createdAt, updatedAt as these are handled separately)
 export const IncomeFormSchema = IncomeSchema.omit({ id: true, userId: true, createdAt: true, updatedAt: true });
@@ -70,7 +75,8 @@ export type IncomeFormData = z.infer<typeof IncomeFormSchema>;
 export const ExpenseFormSchema = ExpenseSchema.omit({ id: true, userId: true, createdAt: true, updatedAt: true });
 export type ExpenseFormData = z.infer<typeof ExpenseFormSchema>;
 
-export const AppointmentFormSchema = AppointmentSchema.omit({ id: true, userId: true, createdAt: true, updatedAt: true });
+// Form schema derived from the base Appointment schema
+export const AppointmentFormSchema = AppointmentBaseSchema.omit({ id: true, userId: true, createdAt: true, updatedAt: true });
 export type AppointmentFormData = z.infer<typeof AppointmentFormSchema>;
 
 export const CreateUserSchema = z.object({
