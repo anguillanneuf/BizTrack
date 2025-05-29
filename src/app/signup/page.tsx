@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { CreateUserSchema, type CreateUserData, UserProfileSchema } from '@/types';
+import { CreateUserSchema, type CreateUserData, UserProfileSchema, UserProfile } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,7 +15,7 @@ import { useAuth, useUser, useFirestore, initiateEmailSignUp, setDocumentNonBloc
 import { Building2, Loader2, Eye, EyeOff } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { FirebaseError } from 'firebase/app';
-import { UserCredential, updateProfile } from 'firebase/auth';
+import { UserCredential, createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc, serverTimestamp } from 'firebase/firestore';
 
 export default function SignupPage() {
@@ -57,11 +57,18 @@ export default function SignupPage() {
       // The "non-blocking" rule is more for UX fluidity on data CUD, not initial setup like signup.
       // If this is not allowed, the alternative is:
       // 1. Call `initiateEmailSignUp`.
+      // initiateEmailSignUp(auth, data.email, data.password);
+      // toast({ title: 'Account Creation Initiated', description: 'Creating your account...' });
       // 2. In `useEffect` listening to `user` changes, if new user and no profile, create one.
       // This makes passing `firstName`, `lastName` harder.
+      // useEffect(() => {
+      //   if (!isUserLoading && user) {
+      //     ..
+      //   }
+      // }, [user, isUserLoading]);
 
       // Let's try a hybrid: await the creation, then non-blocking for profile update and doc.
-      const userCredential = await auth.createUserWithEmailAndPassword(data.email, data.password);
+      const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
       const firebaseUser = userCredential.user;
 
       if (firebaseUser) {

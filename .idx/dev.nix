@@ -7,6 +7,7 @@
   packages = [
     pkgs.nodejs_20
     pkgs.zulu
+    pkgs.google-cloud-sdk
   ];
   # Sets environment variables in the workspace
   env = {};
@@ -17,6 +18,7 @@
     projectId = "demo-app";
     services = ["auth" "firestore"];
   };
+  services.pubsub.enable = true;
   idx = {
     # Search for the extensions you want on https://open-vsx.org/ and use "publisher.id"
     extensions = [
