@@ -9,9 +9,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { AppointmentFormSchema, type AppointmentFormData, type Appointment } from '@/types';
-import { useUser, useFirestore, useCollection, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
-import { collection, doc, query, orderBy, serverTimestamp, where } from 'firebase/firestore';
+import { AppointmentFormSchema, type AppointmentFormData, type Appointment, type UserProfile } from '@/types';
+import { useUser, useFirestore, useCollection, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking, useDoc, doc } from '@/firebase';
+import { collection, query, orderBy, serverTimestamp, where } from 'firebase/firestore';
 import { PlusCircle, Edit3, Trash2, Loader2, AlertTriangle, Clock, MapPin } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Calendar } from '@/components/ui/calendar';
@@ -24,6 +24,14 @@ export default function AppointmentsPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
+
+  const userProfileRef = useMemo(() => {
+    if (!firestore || !user) return null;
+    return doc(firestore, 'users', user.uid);
+  }, [firestore, user]);
+  const { data: userProfile, isLoading: isLoadingUserProfile } = useDoc<UserProfile>(userProfileRef);
+
+  const isAdmin = useMemo(() => userProfile?.role === 'admin', [userProfile]);
 
   const appointmentsQuery = useMemo(() => {
     if (!firestore || !user) return null;
@@ -44,8 +52,8 @@ export default function AppointmentsPage() {
     resolver: zodResolver(AppointmentFormSchema),
     defaultValues: {
       title: '',
-      startTime: setHours(setMinutes(selectedDate || new Date(), 0), 9).toISOString(), // Default to 9:00 AM of selected/current date
-      endTime: setHours(setMinutes(selectedDate || new Date(), 0), 10).toISOString(),  // Default to 10:00 AM
+      startTime: setHours(setMinutes(selectedDate || new Date(), 0), 9).toISOString(), 
+      endTime: setHours(setMinutes(selectedDate || new Date(), 0), 10).toISOString(), 
       location: '',
       description: '',
     },
@@ -58,8 +66,8 @@ export default function AppointmentsPage() {
     if (editingAppointment) {
       form.reset({
         ...editingAppointment,
-        startTime: editingAppointment.startTime, // Already ISO string
-        endTime: editingAppointment.endTime,     // Already ISO string
+        startTime: editingAppointment.startTime, 
+        endTime: editingAppointment.endTime,     
       });
     } else {
       form.reset({
@@ -74,7 +82,7 @@ export default function AppointmentsPage() {
 
 
   const onSubmit = (data: AppointmentFormData) => {
-    if (!user || !firestore) return;
+    if (!user || !firestore || !isAdmin) return;
 
     const appointmentData = {
       ...data,
@@ -97,12 +105,13 @@ export default function AppointmentsPage() {
   };
 
   const handleEdit = (appointment: Appointment) => {
+    if(!isAdmin) return;
     setEditingAppointment(appointment);
     setIsDialogOpen(true);
   };
 
   const handleDelete = (appointmentId: string) => {
-    if (!user || !firestore || !appointmentId) return;
+    if (!user || !firestore || !appointmentId || !isAdmin) return;
     if (window.confirm('Are you sure you want to delete this appointment?')) {
       const docRef = doc(firestore, 'users', user.uid, 'appointments', appointmentId);
       deleteDocumentNonBlocking(docRef);
@@ -163,73 +172,75 @@ export default function AppointmentsPage() {
                 <CardTitle>Appointments for {selectedDate ? format(selectedDate, 'MMMM d, yyyy') : 'Today'}</CardTitle>
                 <CardDescription>Manage your schedule.</CardDescription>
               </div>
-               <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) setEditingAppointment(null); }}>
-                <DialogTrigger asChild>
-                   <Button onClick={() => { setEditingAppointment(null); form.reset(); setIsDialogOpen(true); }}>
-                    <PlusCircle className="mr-2 h-4 w-4" /> Add Appointment
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-lg">
-                  <DialogHeader>
-                    <DialogTitle>{editingAppointment ? 'Edit' : 'New'} Appointment</DialogTitle>
-                  </DialogHeader>
-                  <Form {...form}>
-                    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
-                      <FormField
-                        control={form.control} name="title"
-                        render={({ field }) => (
-                          <FormItem><FormLabel>Title</FormLabel><FormControl><Input placeholder="Meeting with Client" {...field} /></FormControl><FormMessage /></FormItem>
-                        )}
-                      />
-                      <div className="grid grid-cols-2 gap-4">
+              {!isLoadingUserProfile && isAdmin && (
+                <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) setEditingAppointment(null); }}>
+                  <DialogTrigger asChild>
+                     <Button onClick={() => { setEditingAppointment(null); form.reset(); setIsDialogOpen(true); }}>
+                      <PlusCircle className="mr-2 h-4 w-4" /> Add Appointment
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-lg">
+                    <DialogHeader>
+                      <DialogTitle>{editingAppointment ? 'Edit' : 'New'} Appointment</DialogTitle>
+                    </DialogHeader>
+                    <Form {...form}>
+                      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
                         <FormField
-                          control={form.control} name="startTime"
+                          control={form.control} name="title"
                           render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Start Time</FormLabel>
-                              <FormControl>
-                                <Input type="datetime-local" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
+                            <FormItem><FormLabel>Title</FormLabel><FormControl><Input placeholder="Meeting with Client" {...field} /></FormControl><FormMessage /></FormItem>
+                          )}
+                        />
+                        <div className="grid grid-cols-2 gap-4">
+                          <FormField
+                            control={form.control} name="startTime"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Start Time</FormLabel>
+                                <FormControl>
+                                  <Input type="datetime-local" {...field} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control} name="endTime"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>End Time</FormLabel>
+                                <FormControl>
+                                  <Input type="datetime-local" {...field} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                        <FormField
+                          control={form.control} name="location"
+                          render={({ field }) => (
+                            <FormItem><FormLabel>Location (Optional)</FormLabel><FormControl><Input placeholder="Conference Room A" {...field} /></FormControl><FormMessage /></FormItem>
                           )}
                         />
                         <FormField
-                          control={form.control} name="endTime"
+                          control={form.control} name="description"
                           render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>End Time</FormLabel>
-                              <FormControl>
-                                <Input type="datetime-local" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
+                            <FormItem><FormLabel>Description (Optional)</FormLabel><FormControl><Textarea placeholder="Discuss project updates..." {...field} /></FormControl><FormMessage /></FormItem>
                           )}
                         />
-                      </div>
-                      <FormField
-                        control={form.control} name="location"
-                        render={({ field }) => (
-                          <FormItem><FormLabel>Location (Optional)</FormLabel><FormControl><Input placeholder="Conference Room A" {...field} /></FormControl><FormMessage /></FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control} name="description"
-                        render={({ field }) => (
-                          <FormItem><FormLabel>Description (Optional)</FormLabel><FormControl><Textarea placeholder="Discuss project updates..." {...field} /></FormControl><FormMessage /></FormItem>
-                        )}
-                      />
-                      <DialogFooter>
-                        <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-                        <Button type="submit" disabled={form.formState.isSubmitting}>
-                          {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                          {editingAppointment ? 'Save Changes' : 'Add Appointment'}
-                        </Button>
-                      </DialogFooter>
-                    </form>
-                  </Form>
-                </DialogContent>
-              </Dialog>
+                        <DialogFooter>
+                          <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
+                          <Button type="submit" disabled={form.formState.isSubmitting}>
+                            {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            {editingAppointment ? 'Save Changes' : 'Add Appointment'}
+                          </Button>
+                        </DialogFooter>
+                      </form>
+                    </Form>
+                  </DialogContent>
+                </Dialog>
+              )}
             </CardHeader>
             <CardContent>
               {isLoading && (
@@ -239,7 +250,7 @@ export default function AppointmentsPage() {
                   <div className="text-destructive flex flex-col items-center py-10"><AlertTriangle className="w-10 h-10 mb-2"/><p>Error loading appointments: {error.message}</p></div>
               )}
               {!isLoading && !error && appointmentsForSelectedDate.length === 0 && (
-                <p className="text-center text-muted-foreground py-10">No appointments for this date.</p>
+                <p className="text-center text-muted-foreground py-10">No appointments for this date. {isAdmin ? 'Schedule one!' : ''}</p>
               )}
               {!isLoading && !error && appointmentsForSelectedDate.length > 0 && (
                 <ul className="space-y-4">
@@ -247,10 +258,12 @@ export default function AppointmentsPage() {
                     <li key={appt.id} className="p-4 border rounded-lg hover:shadow-md transition-shadow bg-card">
                       <div className="flex justify-between items-start">
                         <h3 className="font-semibold text-lg text-primary">{appt.title}</h3>
-                        <div className="flex space-x-1">
-                          <Button variant="ghost" size="icon" onClick={() => handleEdit(appt)}><Edit3 className="h-4 w-4 text-blue-500" /></Button>
-                          <Button variant="ghost" size="icon" onClick={() => appt.id && handleDelete(appt.id)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
-                        </div>
+                        {!isLoadingUserProfile && isAdmin && (
+                          <div className="flex space-x-1">
+                            <Button variant="ghost" size="icon" onClick={() => handleEdit(appt)}><Edit3 className="h-4 w-4 text-blue-500" /></Button>
+                            <Button variant="ghost" size="icon" onClick={() => appt.id && handleDelete(appt.id)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                          </div>
+                        )}
                       </div>
                       <div className="text-sm text-muted-foreground flex items-center mt-1">
                         <Clock className="h-4 w-4 mr-2" />

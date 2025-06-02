@@ -11,9 +11,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { IncomeFormSchema, type IncomeFormData, type Income } from '@/types';
-import { useUser, useFirestore, useCollection, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
-import { collection, doc, query, orderBy, serverTimestamp } from 'firebase/firestore';
+import { IncomeFormSchema, type IncomeFormData, type Income, type UserProfile } from '@/types';
+import { useUser, useFirestore, useCollection, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking, useDoc, doc } from '@/firebase';
+import { collection, query, orderBy, serverTimestamp } from 'firebase/firestore';
 import { PlusCircle, Edit3, Trash2, Loader2, AlertTriangle, CalendarIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -29,6 +29,14 @@ export default function IncomePage() {
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingIncome, setEditingIncome] = useState<Income | null>(null);
+
+  const userProfileRef = useMemo(() => {
+    if (!firestore || !user) return null;
+    return doc(firestore, 'users', user.uid);
+  }, [firestore, user]);
+  const { data: userProfile, isLoading: isLoadingUserProfile } = useDoc<UserProfile>(userProfileRef);
+
+  const isAdmin = useMemo(() => userProfile?.role === 'admin', [userProfile]);
 
   const incomeQuery = useMemo(() => {
     if (!firestore || !user) return null;
@@ -54,7 +62,7 @@ export default function IncomePage() {
       form.reset({
         ...editingIncome,
         amount: editingIncome.amount,
-        date: format(parseISO(editingIncome.date), 'yyyy-MM-dd'), // Ensure date is string for input[type=date]
+        date: format(parseISO(editingIncome.date), 'yyyy-MM-dd'),
       });
     } else {
       form.reset({
@@ -70,12 +78,12 @@ export default function IncomePage() {
 
 
   const onSubmit = (data: IncomeFormData) => {
-    if (!user || !firestore) return;
+    if (!user || !firestore || !isAdmin) return; // Also check isAdmin for client-side guard
 
     const incomeData = {
       ...data,
       userId: user.uid,
-      amount: Number(data.amount), // Ensure amount is number
+      amount: Number(data.amount), 
       updatedAt: serverTimestamp(),
     };
 
@@ -94,12 +102,13 @@ export default function IncomePage() {
   };
 
   const handleEdit = (income: Income) => {
+    if (!isAdmin) return;
     setEditingIncome(income);
     setIsDialogOpen(true);
   };
 
   const handleDelete = (incomeId: string) => {
-    if (!user || !firestore || !incomeId) return;
+    if (!user || !firestore || !incomeId || !isAdmin) return;
     if (window.confirm('Are you sure you want to delete this income record?')) {
       const docRef = doc(firestore, 'users', user.uid, 'incomes', incomeId);
       deleteDocumentNonBlocking(docRef);
@@ -117,128 +126,130 @@ export default function IncomePage() {
               <CardTitle>Income Records</CardTitle>
               <CardDescription>Manage your sources of revenue.</CardDescription>
             </div>
-            <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) setEditingIncome(null); }}>
-              <DialogTrigger asChild>
-                <Button onClick={() => { setEditingIncome(null); form.reset(); setIsDialogOpen(true); }}>
-                  <PlusCircle className="mr-2 h-4 w-4" /> Add Income
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-lg">
-                <DialogHeader>
-                  <DialogTitle>{editingIncome ? 'Edit' : 'Add New'} Income</DialogTitle>
-                </DialogHeader>
-                <Form {...form}>
-                  <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
-                    <FormField
-                      control={form.control}
-                      name="amount"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Amount</FormLabel>
-                          <FormControl>
-                            <Input type="number" placeholder="100.00" {...field} onChange={e => field.onChange(parseFloat(e.target.value))}/>
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="date"
-                      render={({ field }) => (
-                        <FormItem className="flex flex-col">
-                          <FormLabel>Date</FormLabel>
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <FormControl>
-                                <Button
-                                  variant={"outline"}
-                                  className={cn(
-                                    "w-full pl-3 text-left font-normal",
-                                    !field.value && "text-muted-foreground"
-                                  )}
-                                >
-                                  {field.value ? format(parseISO(field.value), "PPP") : <span>Pick a date</span>}
-                                  <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                                </Button>
-                              </FormControl>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="start">
-                              <Calendar
-                                mode="single"
-                                selected={field.value ? parseISO(field.value) : undefined}
-                                onSelect={(date) => field.onChange(date ? format(date, 'yyyy-MM-dd') : '')}
-                                initialFocus
-                              />
-                            </PopoverContent>
-                          </Popover>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="description"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Description</FormLabel>
-                          <FormControl>
-                            <Textarea placeholder="e.g., Project Alpha payment" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="category"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Category (Optional)</FormLabel>
-                          <FormControl>
-                            <Input placeholder="e.g., Client Work" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                     <FormField
-                      control={form.control}
-                      name="paymentMethod"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Payment Method (Optional)</FormLabel>
-                          <FormControl>
-                            <Input placeholder="e.g., Bank Transfer" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                     <FormField
-                      control={form.control}
-                      name="referenceNumber"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Reference Number (Optional)</FormLabel>
-                          <FormControl>
-                            <Input placeholder="e.g., INV-123" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <DialogFooter>
-                      <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-                      <Button type="submit" disabled={form.formState.isSubmitting}>
-                        {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        {editingIncome ? 'Save Changes' : 'Add Income'}
-                      </Button>
-                    </DialogFooter>
-                  </form>
-                </Form>
-              </DialogContent>
-            </Dialog>
+            { !isLoadingUserProfile && isAdmin && (
+              <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) setEditingIncome(null); }}>
+                <DialogTrigger asChild>
+                  <Button onClick={() => { setEditingIncome(null); form.reset(); setIsDialogOpen(true); }}>
+                    <PlusCircle className="mr-2 h-4 w-4" /> Add Income
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-lg">
+                  <DialogHeader>
+                    <DialogTitle>{editingIncome ? 'Edit' : 'Add New'} Income</DialogTitle>
+                  </DialogHeader>
+                  <Form {...form}>
+                    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
+                      <FormField
+                        control={form.control}
+                        name="amount"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Amount</FormLabel>
+                            <FormControl>
+                              <Input type="number" placeholder="100.00" {...field} onChange={e => field.onChange(parseFloat(e.target.value))}/>
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="date"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-col">
+                            <FormLabel>Date</FormLabel>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <FormControl>
+                                  <Button
+                                    variant={"outline"}
+                                    className={cn(
+                                      "w-full pl-3 text-left font-normal",
+                                      !field.value && "text-muted-foreground"
+                                    )}
+                                  >
+                                    {field.value ? format(parseISO(field.value), "PPP") : <span>Pick a date</span>}
+                                    <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                  </Button>
+                                </FormControl>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-0" align="start">
+                                <Calendar
+                                  mode="single"
+                                  selected={field.value ? parseISO(field.value) : undefined}
+                                  onSelect={(date) => field.onChange(date ? format(date, 'yyyy-MM-dd') : '')}
+                                  initialFocus
+                                />
+                              </PopoverContent>
+                            </Popover>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="description"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Description</FormLabel>
+                            <FormControl>
+                              <Textarea placeholder="e.g., Project Alpha payment" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="category"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Category (Optional)</FormLabel>
+                            <FormControl>
+                              <Input placeholder="e.g., Client Work" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                       <FormField
+                        control={form.control}
+                        name="paymentMethod"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Payment Method (Optional)</FormLabel>
+                            <FormControl>
+                              <Input placeholder="e.g., Bank Transfer" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                       <FormField
+                        control={form.control}
+                        name="referenceNumber"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Reference Number (Optional)</FormLabel>
+                            <FormControl>
+                              <Input placeholder="e.g., INV-123" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <DialogFooter>
+                        <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
+                        <Button type="submit" disabled={form.formState.isSubmitting}>
+                          {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                          {editingIncome ? 'Save Changes' : 'Add Income'}
+                        </Button>
+                      </DialogFooter>
+                    </form>
+                  </Form>
+                </DialogContent>
+              </Dialog>
+            )}
           </CardHeader>
           <CardContent>
             {isLoading && (
@@ -253,7 +264,7 @@ export default function IncomePage() {
                 </div>
             )}
             {!isLoading && !error && incomes && incomes.length === 0 && (
-              <p className="text-center text-muted-foreground py-10">No income records found. Add your first one!</p>
+              <p className="text-center text-muted-foreground py-10">No income records found. {isAdmin ? 'Add your first one!' : ''}</p>
             )}
             {!isLoading && !error && incomes && incomes.length > 0 && (
               <Table>
@@ -263,7 +274,7 @@ export default function IncomePage() {
                     <TableHead>Description</TableHead>
                     <TableHead className="text-right">Amount</TableHead>
                     <TableHead>Category</TableHead>
-                    <TableHead>Actions</TableHead>
+                    {isAdmin && <TableHead>Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -273,16 +284,18 @@ export default function IncomePage() {
                       <TableCell className="max-w-xs truncate">{incomeItem.description}</TableCell>
                       <TableCell className="text-right">{currencyFormatter.format(incomeItem.amount)}</TableCell>
                       <TableCell>{incomeItem.category || '-'}</TableCell>
-                      <TableCell>
-                        <div className="flex space-x-2">
-                          <Button variant="ghost" size="icon" onClick={() => handleEdit(incomeItem)}>
-                            <Edit3 className="h-4 w-4 text-blue-500" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => incomeItem.id && handleDelete(incomeItem.id)}>
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                          </Button>
-                        </div>
-                      </TableCell>
+                      { !isLoadingUserProfile && isAdmin && (
+                        <TableCell>
+                          <div className="flex space-x-2">
+                            <Button variant="ghost" size="icon" onClick={() => handleEdit(incomeItem)}>
+                              <Edit3 className="h-4 w-4 text-blue-500" />
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={() => incomeItem.id && handleDelete(incomeItem.id)}>
+                              <Trash2 className="h-4 w-4 text-red-500" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
