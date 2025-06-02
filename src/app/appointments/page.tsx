@@ -11,8 +11,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { AppointmentFormSchema, type AppointmentFormData, type Appointment, type UserProfile } from '@/types';
-import { useUser, useFirestore, useCollection, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking, useDoc, type WithId } from '@/firebase';
-import { collection, query, orderBy, serverTimestamp, where, doc, onSnapshot } from 'firebase/firestore';
+import { useUser, useFirestore, useCollection, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking, useDoc } from '@/firebase';
+import { collection, query, orderBy, serverTimestamp, doc } from 'firebase/firestore';
 import { PlusCircle, Edit3, Trash2, Loader2, AlertTriangle, Clock, MapPin } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Calendar } from '@/components/ui/calendar';
@@ -26,109 +26,36 @@ export default function AppointmentsPage() {
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
 
-  const currentUserProfileRef = useMemo(() => {
+  // Fetch current user's profile to check role
+  const userProfileRef = useMemo(() => {
     if (!firestore || !user) return null;
     return doc(firestore, 'users', user.uid);
   }, [firestore, user]);
-  const { data: currentUserProfile, isLoading: isLoadingCurrentUserProfile } = useDoc<UserProfile>(currentUserProfileRef);
-  const isCurrentUserAdmin = useMemo(() => currentUserProfile?.role === 'admin', [currentUserProfile]);
+  const { data: userProfile, isLoading: isLoadingProfile, error: profileError } = useDoc<UserProfile>(userProfileRef);
+  const isCurrentUserAdmin = useMemo(() => userProfile?.role === 'admin', [userProfile]);
 
-  // Fetch all user profiles to identify admins
-  const allUsersQuery = useMemo(() => firestore ? query(collection(firestore, 'users')) : null, [firestore]);
-  const { data: allUserProfiles, isLoading: isLoadingAllUserProfiles, error: allUserProfilesError } = useCollection<UserProfile>(allUsersQuery);
-
-  const adminUids = useMemo(() => {
-    if (!allUserProfiles) return [];
-    return allUserProfiles.filter(p => p.role === 'admin').map(p => p.id);
-  }, [allUserProfiles]);
-
-  // Fetch current user's appointments
-  const currentUserAppointmentsQuery = useMemo(() => {
+  const appointmentsQuery = useMemo(() => {
     if (!firestore || !user) return null;
+    // Only fetch appointments for the current user
     return query(collection(firestore, 'users', user.uid, 'appointments'), orderBy('startTime', 'asc'));
   }, [firestore, user]);
-  const { data: currentUserAppointments, isLoading: isLoadingCurrentUserAppointments, error: currentUserAppointmentsError } = useCollection<Appointment>(currentUserAppointmentsQuery);
 
-  // State for admin-created appointments
-  const [adminAppointmentsData, setAdminAppointmentsData] = useState<Record<string, WithId<Appointment>[]>>({});
-  const [isLoadingAdminAppointments, setIsLoadingAdminAppointments] = useState(false);
-  const [adminAppointmentsError, setAdminAppointmentsError] = useState<Error | null>(null);
+  const { data: appointments, isLoading: isLoadingAppointments, error: appointmentsError } = useCollection<Appointment>(appointmentsQuery);
 
-  useEffect(() => {
-    if (!firestore || adminUids.length === 0 || !user) {
-      setAdminAppointmentsData({});
-      setIsLoadingAdminAppointments(false);
-      return;
-    }
-
-    setIsLoadingAdminAppointments(true);
-    setAdminAppointmentsError(null);
-    const unsubscribers: (() => void)[] = [];
-    let activeFetches = 0;
-
-    const uidsToFetch = adminUids.filter(uid => uid !== user.uid); // Fetch only OTHER admins' data
-    if (uidsToFetch.length === 0) {
-      setIsLoadingAdminAppointments(false);
-      setAdminAppointmentsData({}); // Ensure it's empty if no other admins
-      return;
-    }
-    
-    activeFetches = uidsToFetch.length;
-
-    uidsToFetch.forEach(adminUid => {
-      const q = query(collection(firestore, 'users', adminUid, 'appointments'), orderBy('startTime', 'asc'));
-      const unsubscribe = onSnapshot(q, 
-        (snapshot) => {
-          const appts = snapshot.docs.map(doc => ({ ...doc.data() as Appointment, id: doc.id }));
-          setAdminAppointmentsData(prev => ({ ...prev, [adminUid]: appts }));
-          activeFetches--;
-          if (activeFetches === 0) setIsLoadingAdminAppointments(false);
-        }, 
-        (err) => {
-          console.error(`Error fetching appointments for admin ${adminUid}:`, err);
-          setAdminAppointmentsError(err); // Set a general error for admin data
-          activeFetches--;
-          if (activeFetches === 0) setIsLoadingAdminAppointments(false);
-        }
-      );
-      unsubscribers.push(unsubscribe);
-    });
-
-    return () => {
-      unsubscribers.forEach(unsub => unsub());
-    };
-  }, [firestore, adminUids, user]);
-
-  // Merge all appointments
-  const allAppointments = useMemo(() => {
-    let combined: WithId<Appointment>[] = [];
-    if (currentUserAppointments) {
-      combined = [...currentUserAppointments];
-    }
-    Object.values(adminAppointmentsData).forEach(adminApptsList => {
-      combined.push(...adminApptsList);
-    });
-    
-    const uniqueMap = new Map<string, WithId<Appointment>>();
-    combined.forEach(appt => uniqueMap.set(appt.id, appt));
-    
-    return Array.from(uniqueMap.values()).sort((a, b) => parseISO(a.startTime).getTime() - parseISO(b.startTime).getTime());
-  }, [currentUserAppointments, adminAppointmentsData]);
-  
   const appointmentsForSelectedDate = useMemo(() => {
-    if (!allAppointments || !selectedDate) return [];
-    return allAppointments.filter(appt => {
+    if (!appointments || !selectedDate) return [];
+    return appointments.filter(appt => {
       const apptDate = startOfDay(parseISO(appt.startTime));
       return isEqual(apptDate, startOfDay(selectedDate));
     });
-  }, [allAppointments, selectedDate]);
+  }, [appointments, selectedDate]);
 
   const form = useForm<AppointmentFormData>({
     resolver: zodResolver(AppointmentFormSchema),
     defaultValues: {
       title: '',
-      startTime: setHours(setMinutes(selectedDate || new Date(), 0), 9).toISOString(), 
-      endTime: setHours(setMinutes(selectedDate || new Date(), 0), 10).toISOString(), 
+      startTime: setHours(setMinutes(selectedDate || new Date(), 0), 9).toISOString(),
+      endTime: setHours(setMinutes(selectedDate || new Date(), 0), 10).toISOString(),
       location: '',
       description: '',
     },
@@ -141,8 +68,8 @@ export default function AppointmentsPage() {
     if (editingAppointment) {
       form.reset({
         ...editingAppointment,
-        startTime: editingAppointment.startTime, 
-        endTime: editingAppointment.endTime,     
+        startTime: editingAppointment.startTime,
+        endTime: editingAppointment.endTime,
       });
     } else {
       form.reset({
@@ -156,20 +83,18 @@ export default function AppointmentsPage() {
   }, [editingAppointment, form, isDialogOpen, selectedDate]);
 
   const onSubmit = (data: AppointmentFormData) => {
-    if (!user || !firestore || !isCurrentUserAdmin) return;
+    if (!user || !firestore || !isCurrentUserAdmin) { // Ensure user is admin for create/update
+      toast({ variant: "destructive", title: "Permission Denied", description: "You do not have permission to manage appointments." });
+      return;
+    }
 
     const appointmentData = {
       ...data,
-      userId: user.uid, // Admin creates it under their own UID
+      userId: user.uid,
       updatedAt: serverTimestamp(),
     };
 
     if (editingAppointment && editingAppointment.id) {
-      // Admins can only edit appointments they own
-      if (editingAppointment.userId !== user.uid) {
-          toast({ variant: "destructive", title: "Permission Denied", description: "You can only edit your own appointments." });
-          return;
-      }
       const docRef = doc(firestore, 'users', user.uid, 'appointments', editingAppointment.id);
       updateDocumentNonBlocking(docRef, appointmentData);
       toast({ title: 'Appointment Updated', description: 'Your appointment has been updated.' });
@@ -184,8 +109,8 @@ export default function AppointmentsPage() {
   };
 
   const handleEdit = (appointment: Appointment) => {
-    if(!isCurrentUserAdmin || appointment.userId !== user?.uid) { // Admins can only edit their own
-        toast({ variant: "destructive", title: "Permission Denied", description: "You can only edit appointments you created." });
+    if(!isCurrentUserAdmin) {
+        toast({ variant: "destructive", title: "Permission Denied", description: "You do not have permission to edit appointments." });
         return;
     }
     setEditingAppointment(appointment);
@@ -193,8 +118,8 @@ export default function AppointmentsPage() {
   };
 
   const handleDelete = (appointment: Appointment) => {
-    if (!user || !firestore || !appointment.id || !isCurrentUserAdmin || appointment.userId !== user?.uid) { // Admins can only delete their own
-      toast({ variant: "destructive", title: "Permission Denied", description: "You can only delete appointments you created." });
+    if (!user || !firestore || !appointment.id || !isCurrentUserAdmin) { // Ensure user is admin for delete
+      toast({ variant: "destructive", title: "Permission Denied", description: "You do not have permission to delete appointments." });
       return;
     }
     if (window.confirm('Are you sure you want to delete this appointment?')) {
@@ -204,8 +129,8 @@ export default function AppointmentsPage() {
     }
   };
   
-  const isLoading = isLoadingCurrentUserProfile || isLoadingAllUserProfiles || isLoadingCurrentUserAppointments || isLoadingAdminAppointments;
-  const error = currentUserAppointmentsError || adminAppointmentsError || allUserProfilesError;
+  const isLoading = isLoadingProfile || isLoadingAppointments;
+  const error = profileError || appointmentsError;
 
   return (
     <AppLayout>
@@ -224,7 +149,7 @@ export default function AppointmentsPage() {
                 className="rounded-md border"
                 components={{
                   DayContent: ({ date }) => {
-                    const dayHasAppointment = allAppointments?.some(appt => 
+                    const dayHasAppointment = appointments?.some(appt => 
                       isEqual(startOfDay(parseISO(appt.startTime)), startOfDay(date))
                     );
                     return (
@@ -247,9 +172,9 @@ export default function AppointmentsPage() {
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
                 <CardTitle>Appointments for {selectedDate ? format(selectedDate, 'MMMM d, yyyy') : 'Today'}</CardTitle>
-                <CardDescription>Manage your schedule. {isCurrentUserAdmin ? '' : 'Viewing combined schedule.'}</CardDescription>
+                <CardDescription>Manage your schedule.</CardDescription>
               </div>
-              {!isLoadingCurrentUserProfile && isCurrentUserAdmin && (
+              {!isLoadingProfile && isCurrentUserAdmin && (
                 <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) setEditingAppointment(null); }}>
                   <DialogTrigger asChild>
                      <Button onClick={() => { setEditingAppointment(null); form.reset(); setIsDialogOpen(true); }}>
@@ -334,13 +259,8 @@ export default function AppointmentsPage() {
                   {appointmentsForSelectedDate.map((appt) => (
                     <li key={appt.id} className="p-4 border rounded-lg hover:shadow-md transition-shadow bg-card">
                       <div className="flex justify-between items-start">
-                        <div>
-                            <h3 className="font-semibold text-lg text-primary">{appt.title}</h3>
-                            {appt.userId !== user?.uid && allUserProfiles?.find(p => p.id === appt.userId)?.role === 'admin' && (
-                                <span className="text-xs text-muted-foreground">(Admin: {allUserProfiles?.find(p => p.id === appt.userId)?.firstName || 'N/A'})</span>
-                            )}
-                        </div>
-                        {!isLoadingCurrentUserProfile && isCurrentUserAdmin && appt.userId === user?.uid && (
+                        <h3 className="font-semibold text-lg text-primary">{appt.title}</h3>
+                        {!isLoadingProfile && isCurrentUserAdmin && (
                           <div className="flex space-x-1">
                             <Button variant="ghost" size="icon" onClick={() => handleEdit(appt)}><Edit3 className="h-4 w-4 text-blue-500" /></Button>
                             <Button variant="ghost" size="icon" onClick={() => handleDelete(appt)}><Trash2 className="h-4 w-4 text-red-500" /></Button>

@@ -12,8 +12,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ExpenseFormSchema, type ExpenseFormData, type Expense, type UserProfile } from '@/types';
-import { useUser, useFirestore, useCollection, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking, useDoc, type WithId } from '@/firebase';
-import { collection, query, orderBy, serverTimestamp, doc, onSnapshot } from 'firebase/firestore';
+import { useUser, useFirestore, useCollection, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking, useDoc } from '@/firebase';
+import { collection, query, orderBy, serverTimestamp, doc } from 'firebase/firestore';
 import { PlusCircle, Edit3, Trash2, Loader2, AlertTriangle, CalendarIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -30,89 +30,18 @@ export default function ExpensesPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
 
-  const currentUserProfileRef = useMemo(() => {
+  const userProfileRef = useMemo(() => {
     if (!firestore || !user) return null;
     return doc(firestore, 'users', user.uid);
   }, [firestore, user]);
-  const { data: currentUserProfile, isLoading: isLoadingCurrentUserProfile } = useDoc<UserProfile>(currentUserProfileRef);
-  const isCurrentUserAdmin = useMemo(() => currentUserProfile?.role === 'admin', [currentUserProfile]);
+  const { data: userProfile, isLoading: isLoadingProfile, error: profileError } = useDoc<UserProfile>(userProfileRef);
+  const isCurrentUserAdmin = useMemo(() => userProfile?.role === 'admin', [userProfile]);
 
-  const allUsersQuery = useMemo(() => firestore ? query(collection(firestore, 'users')) : null, [firestore]);
-  const { data: allUserProfiles, isLoading: isLoadingAllUserProfiles, error: allUserProfilesError } = useCollection<UserProfile>(allUsersQuery);
-
-  const adminUids = useMemo(() => {
-    if (!allUserProfiles) return [];
-    return allUserProfiles.filter(p => p.role === 'admin').map(p => p.id);
-  }, [allUserProfiles]);
-
-  const currentUserExpensesQuery = useMemo(() => {
+  const expensesQuery = useMemo(() => {
     if (!firestore || !user) return null;
     return query(collection(firestore, 'users', user.uid, 'expenses'), orderBy('date', 'desc'));
   }, [firestore, user]);
-  const { data: currentUserExpenses, isLoading: isLoadingCurrentUserExpenses, error: currentUserExpensesError } = useCollection<Expense>(currentUserExpensesQuery);
-
-  const [adminExpensesData, setAdminExpensesData] = useState<Record<string, WithId<Expense>[]>>({});
-  const [isLoadingAdminExpenses, setIsLoadingAdminExpenses] = useState(false);
-  const [adminExpensesError, setAdminExpensesError] = useState<Error | null>(null);
-
-  useEffect(() => {
-    if (!firestore || adminUids.length === 0 || !user) {
-      setAdminExpensesData({});
-      setIsLoadingAdminExpenses(false);
-      return;
-    }
-
-    setIsLoadingAdminExpenses(true);
-    setAdminExpensesError(null);
-    const unsubscribers: (() => void)[] = [];
-    let activeFetches = 0;
-
-    const uidsToFetch = adminUids.filter(uid => uid !== user.uid);
-    if (uidsToFetch.length === 0) {
-      setIsLoadingAdminExpenses(false);
-      setAdminExpensesData({});
-      return;
-    }
-    activeFetches = uidsToFetch.length;
-
-    uidsToFetch.forEach(adminUid => {
-      const q = query(collection(firestore, 'users', adminUid, 'expenses'), orderBy('date', 'desc'));
-      const unsubscribe = onSnapshot(q, 
-        (snapshot) => {
-          const items = snapshot.docs.map(doc => ({ ...doc.data() as Expense, id: doc.id }));
-          setAdminExpensesData(prev => ({ ...prev, [adminUid]: items }));
-          activeFetches--;
-          if (activeFetches === 0) setIsLoadingAdminExpenses(false);
-        }, 
-        (err) => {
-          console.error(`Error fetching expenses for admin ${adminUid}:`, err);
-          setAdminExpensesError(err);
-          activeFetches--;
-          if (activeFetches === 0) setIsLoadingAdminExpenses(false);
-        }
-      );
-      unsubscribers.push(unsubscribe);
-    });
-
-    return () => {
-      unsubscribers.forEach(unsub => unsub());
-    };
-  }, [firestore, adminUids, user]);
-
-  const allExpenses = useMemo(() => {
-    let combined: WithId<Expense>[] = [];
-    if (currentUserExpenses) {
-      combined = [...currentUserExpenses];
-    }
-    Object.values(adminExpensesData).forEach(adminList => {
-      combined.push(...adminList);
-    });
-    
-    const uniqueMap = new Map<string, WithId<Expense>>();
-    combined.forEach(item => uniqueMap.set(item.id, item));
-    
-    return Array.from(uniqueMap.values()).sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
-  }, [currentUserExpenses, adminExpensesData]);
+  const { data: expenses, isLoading: isLoadingExpenses, error: expensesError } = useCollection<Expense>(expensesQuery);
 
   const form = useForm<ExpenseFormData>({
     resolver: zodResolver(ExpenseFormSchema),
@@ -148,7 +77,10 @@ export default function ExpensesPage() {
   }, [editingExpense, form, isDialogOpen]);
 
   const onSubmit = (data: ExpenseFormData) => {
-    if (!user || !firestore || !isCurrentUserAdmin) return;
+    if (!user || !firestore || !isCurrentUserAdmin) {
+      toast({ variant: "destructive", title: "Permission Denied", description: "You do not have permission to manage expenses." });
+      return;
+    }
 
     const expenseData = {
       ...data,
@@ -158,10 +90,6 @@ export default function ExpensesPage() {
     };
 
     if (editingExpense && editingExpense.id) {
-      if (editingExpense.userId !== user.uid) {
-         toast({ variant: "destructive", title: "Permission Denied", description: "You can only edit your own expense records." });
-         return;
-      }
       const docRef = doc(firestore, 'users', user.uid, 'expenses', editingExpense.id);
       updateDocumentNonBlocking(docRef, expenseData);
       toast({ title: 'Expense Updated', description: 'Your expense record has been updated.' });
@@ -176,8 +104,8 @@ export default function ExpensesPage() {
   };
 
   const handleEdit = (expense: Expense) => {
-    if (!isCurrentUserAdmin || expense.userId !== user?.uid) {
-      toast({ variant: "destructive", title: "Permission Denied", description: "You can only edit expense records you created." });
+    if (!isCurrentUserAdmin) {
+      toast({ variant: "destructive", title: "Permission Denied", description: "You do not have permission to edit expenses." });
       return;
     }
     setEditingExpense(expense);
@@ -185,8 +113,8 @@ export default function ExpensesPage() {
   };
 
   const handleDelete = (expenseItem: Expense) => {
-    if (!user || !firestore || !expenseItem.id || !isCurrentUserAdmin || expenseItem.userId !== user?.uid) {
-      toast({ variant: "destructive", title: "Permission Denied", description: "You can only delete expense records you created." });
+    if (!user || !firestore || !expenseItem.id || !isCurrentUserAdmin) {
+      toast({ variant: "destructive", title: "Permission Denied", description: "You do not have permission to delete expenses." });
       return;
     }
     if (window.confirm('Are you sure you want to delete this expense record?')) {
@@ -196,8 +124,8 @@ export default function ExpensesPage() {
     }
   };
   
-  const isLoading = isLoadingCurrentUserProfile || isLoadingAllUserProfiles || isLoadingCurrentUserExpenses || isLoadingAdminExpenses;
-  const error = currentUserExpensesError || adminExpensesError || allUserProfilesError;
+  const isLoading = isLoadingProfile || isLoadingExpenses;
+  const error = profileError || expensesError;
 
   return (
     <AppLayout>
@@ -206,9 +134,9 @@ export default function ExpensesPage() {
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle>Expense Records</CardTitle>
-              <CardDescription>Track your business expenditures. {isCurrentUserAdmin ? '' : 'Viewing combined records.'}</CardDescription>
+              <CardDescription>Track your business expenditures.</CardDescription>
             </div>
-            {!isLoadingCurrentUserProfile && isCurrentUserAdmin && (
+            {!isLoadingProfile && isCurrentUserAdmin && (
               <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) setEditingExpense(null); }}>
                 <DialogTrigger asChild>
                   <Button onClick={() => { setEditingExpense(null); form.reset(); setIsDialogOpen(true); }}>
@@ -253,8 +181,8 @@ export default function ExpensesPage() {
           <CardContent>
              {isLoading && (<div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>)}
             {error && (<div className="text-destructive flex flex-col items-center py-10"><AlertTriangle className="w-10 h-10 mb-2"/><p>Error loading expense data: {error.message}</p></div>)}
-            {!isLoading && !error && allExpenses && allExpenses.length === 0 && (<p className="text-center text-muted-foreground py-10">No expense records found. {isCurrentUserAdmin ? 'Add your first one!' : ''}</p>)}
-            {!isLoading && !error && allExpenses && allExpenses.length > 0 && (
+            {!isLoading && !error && expenses && expenses.length === 0 && (<p className="text-center text-muted-foreground py-10">No expense records found. {isCurrentUserAdmin ? 'Add your first one!' : ''}</p>)}
+            {!isLoading && !error && expenses && expenses.length > 0 && (
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -262,23 +190,17 @@ export default function ExpensesPage() {
                     <TableHead>Description</TableHead>
                     <TableHead className="text-right">Amount</TableHead>
                     <TableHead>Category</TableHead>
-                    {isCurrentUserAdmin && <TableHead>Added By</TableHead>}
                     {isCurrentUserAdmin && <TableHead>Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {allExpenses.map((expenseItem) => (
+                  {expenses.map((expenseItem) => (
                     <TableRow key={expenseItem.id}>
                       <TableCell>{format(parseISO(expenseItem.date), 'MMM d, yyyy')}</TableCell>
                       <TableCell className="max-w-xs truncate">{expenseItem.description}</TableCell>
                       <TableCell className="text-right">{currencyFormatter.format(expenseItem.amount)}</TableCell>
                       <TableCell>{expenseItem.category || '-'}</TableCell>
-                      {isCurrentUserAdmin && (
-                        <TableCell>
-                          {expenseItem.userId === user?.uid ? 'You' : (allUserProfiles?.find(p => p.id === expenseItem.userId)?.firstName || 'Admin')}
-                        </TableCell>
-                      )}
-                      {!isLoadingCurrentUserProfile && isCurrentUserAdmin && expenseItem.userId === user?.uid && (
+                      {!isLoadingProfile && isCurrentUserAdmin && (
                         <TableCell>
                           <div className="flex space-x-2">
                             <Button variant="ghost" size="icon" onClick={() => handleEdit(expenseItem)}><Edit3 className="h-4 w-4 text-blue-500" /></Button>
@@ -286,7 +208,6 @@ export default function ExpensesPage() {
                           </div>
                         </TableCell>
                       )}
-                      {!isLoadingCurrentUserProfile && isCurrentUserAdmin && expenseItem.userId !== user?.uid && (<TableCell></TableCell>)}
                     </TableRow>
                   ))}
                 </TableBody>

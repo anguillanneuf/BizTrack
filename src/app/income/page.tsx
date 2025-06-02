@@ -12,8 +12,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { IncomeFormSchema, type IncomeFormData, type Income, type UserProfile } from '@/types';
-import { useUser, useFirestore, useCollection, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking, useDoc, type WithId } from '@/firebase';
-import { collection, query, orderBy, serverTimestamp, doc, onSnapshot } from 'firebase/firestore';
+import { useUser, useFirestore, useCollection, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking, useDoc } from '@/firebase';
+import { collection, query, orderBy, serverTimestamp, doc } from 'firebase/firestore';
 import { PlusCircle, Edit3, Trash2, Loader2, AlertTriangle, CalendarIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -30,89 +30,18 @@ export default function IncomePage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingIncome, setEditingIncome] = useState<Income | null>(null);
 
-  const currentUserProfileRef = useMemo(() => {
+  const userProfileRef = useMemo(() => {
     if (!firestore || !user) return null;
     return doc(firestore, 'users', user.uid);
   }, [firestore, user]);
-  const { data: currentUserProfile, isLoading: isLoadingCurrentUserProfile } = useDoc<UserProfile>(currentUserProfileRef);
-  const isCurrentUserAdmin = useMemo(() => currentUserProfile?.role === 'admin', [currentUserProfile]);
+  const { data: userProfile, isLoading: isLoadingProfile, error: profileError } = useDoc<UserProfile>(userProfileRef);
+  const isCurrentUserAdmin = useMemo(() => userProfile?.role === 'admin', [userProfile]);
 
-  const allUsersQuery = useMemo(() => firestore ? query(collection(firestore, 'users')) : null, [firestore]);
-  const { data: allUserProfiles, isLoading: isLoadingAllUserProfiles, error: allUserProfilesError } = useCollection<UserProfile>(allUsersQuery);
-
-  const adminUids = useMemo(() => {
-    if (!allUserProfiles) return [];
-    return allUserProfiles.filter(p => p.role === 'admin').map(p => p.id);
-  }, [allUserProfiles]);
-
-  const currentUserIncomeQuery = useMemo(() => {
+  const incomeQuery = useMemo(() => {
     if (!firestore || !user) return null;
     return query(collection(firestore, 'users', user.uid, 'incomes'), orderBy('date', 'desc'));
   }, [firestore, user]);
-  const { data: currentUserIncomes, isLoading: isLoadingCurrentUserIncomes, error: currentUserIncomesError } = useCollection<Income>(currentUserIncomeQuery);
-
-  const [adminIncomesData, setAdminIncomesData] = useState<Record<string, WithId<Income>[]>>({});
-  const [isLoadingAdminIncomes, setIsLoadingAdminIncomes] = useState(false);
-  const [adminIncomesError, setAdminIncomesError] = useState<Error | null>(null);
-
-  useEffect(() => {
-    if (!firestore || adminUids.length === 0 || !user) {
-      setAdminIncomesData({});
-      setIsLoadingAdminIncomes(false);
-      return;
-    }
-
-    setIsLoadingAdminIncomes(true);
-    setAdminIncomesError(null);
-    const unsubscribers: (() => void)[] = [];
-    let activeFetches = 0;
-
-    const uidsToFetch = adminUids.filter(uid => uid !== user.uid);
-     if (uidsToFetch.length === 0) {
-      setIsLoadingAdminIncomes(false);
-      setAdminIncomesData({});
-      return;
-    }
-    activeFetches = uidsToFetch.length;
-
-    uidsToFetch.forEach(adminUid => {
-      const q = query(collection(firestore, 'users', adminUid, 'incomes'), orderBy('date', 'desc'));
-      const unsubscribe = onSnapshot(q, 
-        (snapshot) => {
-          const items = snapshot.docs.map(doc => ({ ...doc.data() as Income, id: doc.id }));
-          setAdminIncomesData(prev => ({ ...prev, [adminUid]: items }));
-          activeFetches--;
-          if (activeFetches === 0) setIsLoadingAdminIncomes(false);
-        }, 
-        (err) => {
-          console.error(`Error fetching income for admin ${adminUid}:`, err);
-          setAdminIncomesError(err);
-          activeFetches--;
-          if (activeFetches === 0) setIsLoadingAdminIncomes(false);
-        }
-      );
-      unsubscribers.push(unsubscribe);
-    });
-
-    return () => {
-      unsubscribers.forEach(unsub => unsub());
-    };
-  }, [firestore, adminUids, user]);
-
-  const allIncomes = useMemo(() => {
-    let combined: WithId<Income>[] = [];
-    if (currentUserIncomes) {
-      combined = [...currentUserIncomes];
-    }
-    Object.values(adminIncomesData).forEach(adminList => {
-      combined.push(...adminList);
-    });
-    
-    const uniqueMap = new Map<string, WithId<Income>>();
-    combined.forEach(item => uniqueMap.set(item.id, item));
-    
-    return Array.from(uniqueMap.values()).sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
-  }, [currentUserIncomes, adminIncomesData]);
+  const { data: incomes, isLoading: isLoadingIncomes, error: incomesError } = useCollection<Income>(incomeQuery);
 
   const form = useForm<IncomeFormData>({
     resolver: zodResolver(IncomeFormSchema),
@@ -146,7 +75,10 @@ export default function IncomePage() {
   }, [editingIncome, form, isDialogOpen]);
 
   const onSubmit = (data: IncomeFormData) => {
-    if (!user || !firestore || !isCurrentUserAdmin) return;
+    if (!user || !firestore || !isCurrentUserAdmin) {
+      toast({ variant: "destructive", title: "Permission Denied", description: "You do not have permission to manage income." });
+      return;
+    }
 
     const incomeData = {
       ...data,
@@ -156,10 +88,6 @@ export default function IncomePage() {
     };
 
     if (editingIncome && editingIncome.id) {
-      if (editingIncome.userId !== user.uid) {
-        toast({ variant: "destructive", title: "Permission Denied", description: "You can only edit your own income records." });
-        return;
-      }
       const docRef = doc(firestore, 'users', user.uid, 'incomes', editingIncome.id);
       updateDocumentNonBlocking(docRef, incomeData);
       toast({ title: 'Income Updated', description: 'Your income record has been updated.' });
@@ -174,8 +102,8 @@ export default function IncomePage() {
   };
 
   const handleEdit = (income: Income) => {
-    if (!isCurrentUserAdmin || income.userId !== user?.uid) {
-       toast({ variant: "destructive", title: "Permission Denied", description: "You can only edit income records you created." });
+    if (!isCurrentUserAdmin) {
+       toast({ variant: "destructive", title: "Permission Denied", description: "You do not have permission to edit income." });
        return;
     }
     setEditingIncome(income);
@@ -183,8 +111,8 @@ export default function IncomePage() {
   };
 
   const handleDelete = (incomeItem: Income) => {
-    if (!user || !firestore || !incomeItem.id || !isCurrentUserAdmin || incomeItem.userId !== user?.uid) {
-        toast({ variant: "destructive", title: "Permission Denied", description: "You can only delete income records you created." });
+    if (!user || !firestore || !incomeItem.id || !isCurrentUserAdmin) {
+        toast({ variant: "destructive", title: "Permission Denied", description: "You do not have permission to delete income." });
         return;
     }
     if (window.confirm('Are you sure you want to delete this income record?')) {
@@ -194,8 +122,8 @@ export default function IncomePage() {
     }
   };
 
-  const isLoading = isLoadingCurrentUserProfile || isLoadingAllUserProfiles || isLoadingCurrentUserIncomes || isLoadingAdminIncomes;
-  const error = currentUserIncomesError || adminIncomesError || allUserProfilesError;
+  const isLoading = isLoadingProfile || isLoadingIncomes;
+  const error = profileError || incomesError;
 
   return (
     <AppLayout>
@@ -204,9 +132,9 @@ export default function IncomePage() {
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle>Income Records</CardTitle>
-              <CardDescription>Manage your sources of revenue. {isCurrentUserAdmin ? '' : 'Viewing combined records.'}</CardDescription>
+              <CardDescription>Manage your sources of revenue.</CardDescription>
             </div>
-            {!isLoadingCurrentUserProfile && isCurrentUserAdmin && (
+            {!isLoadingProfile && isCurrentUserAdmin && (
               <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) setEditingIncome(null); }}>
                 <DialogTrigger asChild>
                   <Button onClick={() => { setEditingIncome(null); form.reset(); setIsDialogOpen(true); }}>
@@ -271,8 +199,8 @@ export default function IncomePage() {
           <CardContent>
             {isLoading && (<div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>)}
             {error && (<div className="text-destructive flex flex-col items-center py-10"><AlertTriangle className="w-10 h-10 mb-2"/><p>Error loading income data: {error.message}</p></div>)}
-            {!isLoading && !error && allIncomes && allIncomes.length === 0 && (<p className="text-center text-muted-foreground py-10">No income records found. {isCurrentUserAdmin ? 'Add your first one!' : ''}</p>)}
-            {!isLoading && !error && allIncomes && allIncomes.length > 0 && (
+            {!isLoading && !error && incomes && incomes.length === 0 && (<p className="text-center text-muted-foreground py-10">No income records found. {isCurrentUserAdmin ? 'Add your first one!' : ''}</p>)}
+            {!isLoading && !error && incomes && incomes.length > 0 && (
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -280,23 +208,17 @@ export default function IncomePage() {
                     <TableHead>Description</TableHead>
                     <TableHead className="text-right">Amount</TableHead>
                     <TableHead>Category</TableHead>
-                     {isCurrentUserAdmin && <TableHead>Added By</TableHead>}
                     {isCurrentUserAdmin && <TableHead>Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {allIncomes.map((incomeItem) => (
+                  {incomes.map((incomeItem) => (
                     <TableRow key={incomeItem.id}>
                       <TableCell>{format(parseISO(incomeItem.date), 'MMM d, yyyy')}</TableCell>
                       <TableCell className="max-w-xs truncate">{incomeItem.description}</TableCell>
                       <TableCell className="text-right">{currencyFormatter.format(incomeItem.amount)}</TableCell>
                       <TableCell>{incomeItem.category || '-'}</TableCell>
-                      {isCurrentUserAdmin && (
-                        <TableCell>
-                          {incomeItem.userId === user?.uid ? 'You' : (allUserProfiles?.find(p => p.id === incomeItem.userId)?.firstName || 'Admin')}
-                        </TableCell>
-                      )}
-                      {!isLoadingCurrentUserProfile && isCurrentUserAdmin && incomeItem.userId === user?.uid && (
+                      {!isLoadingProfile && isCurrentUserAdmin && (
                         <TableCell>
                           <div className="flex space-x-2">
                             <Button variant="ghost" size="icon" onClick={() => handleEdit(incomeItem)}><Edit3 className="h-4 w-4 text-blue-500" /></Button>
@@ -304,7 +226,6 @@ export default function IncomePage() {
                           </div>
                         </TableCell>
                       )}
-                       {!isLoadingCurrentUserProfile && isCurrentUserAdmin && incomeItem.userId !== user?.uid && (<TableCell></TableCell>)}
                     </TableRow>
                   ))}
                 </TableBody>
