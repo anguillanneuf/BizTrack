@@ -10,8 +10,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { AppointmentFormSchema, type AppointmentFormData, type Appointment, type UserProfile } from '@/types';
-import { useUser, useFirestore, useCollection, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking, useDoc, doc } from '@/firebase';
-import { collection, query, orderBy, serverTimestamp, where } from 'firebase/firestore';
+import { useUser, useFirestore, useCollection, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking, useDoc } from '@/firebase';
+import { collection, query, orderBy, serverTimestamp, where, doc } from 'firebase/firestore';
 import { PlusCircle, Edit3, Trash2, Loader2, AlertTriangle, Clock, MapPin } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Calendar } from '@/components/ui/calendar';

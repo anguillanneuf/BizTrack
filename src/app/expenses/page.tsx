@@ -1,3 +1,4 @@
+
 'use client';
 import React, { useState, useMemo, useEffect } from 'react';
 import AppLayout from '@/components/layout/AppLayout';
@@ -12,8 +13,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ExpenseFormSchema, type ExpenseFormData, type Expense, type UserProfile } from '@/types';
-import { useUser, useFirestore, useCollection, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking, useDoc, doc } from '@/firebase';
-import { collection, query, orderBy, serverTimestamp } from 'firebase/firestore';
+import { useUser, useFirestore, useCollection, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking, useDoc } from '@/firebase';
+import { collection, query, orderBy, serverTimestamp, doc } from 'firebase/firestore';
 import { PlusCircle, Edit3, Trash2, Loader2, AlertTriangle, CalendarIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -320,3 +321,5 @@ export default function ExpensesPage() {
     </AppLayout>
   );
 }
+
+    
