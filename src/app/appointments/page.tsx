@@ -10,13 +10,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { AppointmentFormSchema, type AppointmentFormData, type Appointment, type UserProfile } from '@/types';
-import { useUser, useFirestore, useCollection, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking, useDoc } from '@/firebase';
+import { AppointmentFormSchema, type AppointmentFormData, type Appointment } from '@/types';
+import { useUser, useFirestore, useCollection, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
 import { collection, query, orderBy, serverTimestamp, doc } from 'firebase/firestore';
 import { PlusCircle, Edit3, Trash2, Loader2, AlertTriangle, Clock, MapPin } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Calendar } from '@/components/ui/calendar';
-import { format, parseISO, startOfDay, endOfDay, isEqual, setHours, setMinutes } from 'date-fns';
+import { format, parseISO, startOfDay, isEqual, setHours, setMinutes } from 'date-fns';
 
 export default function AppointmentsPage() {
   const { user } = useUser();
@@ -26,17 +26,8 @@ export default function AppointmentsPage() {
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
 
-  // Fetch current user's profile to check role
-  const userProfileRef = useMemo(() => {
-    if (!firestore || !user) return null;
-    return doc(firestore, 'users', user.uid);
-  }, [firestore, user]);
-  const { data: userProfile, isLoading: isLoadingProfile, error: profileError } = useDoc<UserProfile>(userProfileRef);
-  const isCurrentUserAdmin = useMemo(() => userProfile?.role === 'admin', [userProfile]);
-
   const appointmentsQuery = useMemo(() => {
     if (!firestore || !user) return null;
-    // Only fetch appointments for the current user
     return query(collection(firestore, 'users', user.uid, 'appointments'), orderBy('startTime', 'asc'));
   }, [firestore, user]);
 
@@ -83,8 +74,8 @@ export default function AppointmentsPage() {
   }, [editingAppointment, form, isDialogOpen, selectedDate]);
 
   const onSubmit = (data: AppointmentFormData) => {
-    if (!user || !firestore || !isCurrentUserAdmin) { // Ensure user is admin for create/update
-      toast({ variant: "destructive", title: "Permission Denied", description: "You do not have permission to manage appointments." });
+    if (!user || !firestore) {
+      toast({ variant: "destructive", title: "Authentication Error", description: "You must be logged in to manage appointments." });
       return;
     }
 
@@ -109,8 +100,8 @@ export default function AppointmentsPage() {
   };
 
   const handleEdit = (appointment: Appointment) => {
-    if(!isCurrentUserAdmin) {
-        toast({ variant: "destructive", title: "Permission Denied", description: "You do not have permission to edit appointments." });
+    if (!user) {
+        toast({ variant: "destructive", title: "Authentication Error", description: "You must be logged in to edit appointments." });
         return;
     }
     setEditingAppointment(appointment);
@@ -118,8 +109,8 @@ export default function AppointmentsPage() {
   };
 
   const handleDelete = (appointment: Appointment) => {
-    if (!user || !firestore || !appointment.id || !isCurrentUserAdmin) { // Ensure user is admin for delete
-      toast({ variant: "destructive", title: "Permission Denied", description: "You do not have permission to delete appointments." });
+    if (!user || !firestore || !appointment.id) {
+      toast({ variant: "destructive", title: "Error", description: "Could not delete appointment." });
       return;
     }
     if (window.confirm('Are you sure you want to delete this appointment?')) {
@@ -129,8 +120,8 @@ export default function AppointmentsPage() {
     }
   };
   
-  const isLoading = isLoadingProfile || isLoadingAppointments;
-  const error = profileError || appointmentsError;
+  const isLoading = isLoadingAppointments;
+  const error = appointmentsError;
 
   return (
     <AppLayout>
@@ -174,7 +165,7 @@ export default function AppointmentsPage() {
                 <CardTitle>Appointments for {selectedDate ? format(selectedDate, 'MMMM d, yyyy') : 'Today'}</CardTitle>
                 <CardDescription>Manage your schedule.</CardDescription>
               </div>
-              {!isLoadingProfile && isCurrentUserAdmin && (
+              {user && (
                 <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) setEditingAppointment(null); }}>
                   <DialogTrigger asChild>
                      <Button onClick={() => { setEditingAppointment(null); form.reset(); setIsDialogOpen(true); }}>
@@ -252,7 +243,7 @@ export default function AppointmentsPage() {
                   <div className="text-destructive flex flex-col items-center py-10"><AlertTriangle className="w-10 h-10 mb-2"/><p>Error loading appointments: {error.message}</p></div>
               )}
               {!isLoading && !error && appointmentsForSelectedDate.length === 0 && (
-                <p className="text-center text-muted-foreground py-10">No appointments for this date. {isCurrentUserAdmin ? 'Schedule one!' : ''}</p>
+                <p className="text-center text-muted-foreground py-10">No appointments for this date. Schedule one!</p>
               )}
               {!isLoading && !error && appointmentsForSelectedDate.length > 0 && (
                 <ul className="space-y-4">
@@ -260,7 +251,7 @@ export default function AppointmentsPage() {
                     <li key={appt.id} className="p-4 border rounded-lg hover:shadow-md transition-shadow bg-card">
                       <div className="flex justify-between items-start">
                         <h3 className="font-semibold text-lg text-primary">{appt.title}</h3>
-                        {!isLoadingProfile && isCurrentUserAdmin && (
+                        {user && (
                           <div className="flex space-x-1">
                             <Button variant="ghost" size="icon" onClick={() => handleEdit(appt)}><Edit3 className="h-4 w-4 text-blue-500" /></Button>
                             <Button variant="ghost" size="icon" onClick={() => handleDelete(appt)}><Trash2 className="h-4 w-4 text-red-500" /></Button>

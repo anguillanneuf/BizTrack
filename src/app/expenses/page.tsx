@@ -11,8 +11,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { ExpenseFormSchema, type ExpenseFormData, type Expense, type UserProfile } from '@/types';
-import { useUser, useFirestore, useCollection, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking, useDoc } from '@/firebase';
+import { ExpenseFormSchema, type ExpenseFormData, type Expense } from '@/types';
+import { useUser, useFirestore, useCollection, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
 import { collection, query, orderBy, serverTimestamp, doc } from 'firebase/firestore';
 import { PlusCircle, Edit3, Trash2, Loader2, AlertTriangle, CalendarIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -29,13 +29,6 @@ export default function ExpensesPage() {
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
-
-  const userProfileRef = useMemo(() => {
-    if (!firestore || !user) return null;
-    return doc(firestore, 'users', user.uid);
-  }, [firestore, user]);
-  const { data: userProfile, isLoading: isLoadingProfile, error: profileError } = useDoc<UserProfile>(userProfileRef);
-  const isCurrentUserAdmin = useMemo(() => userProfile?.role === 'admin', [userProfile]);
 
   const expensesQuery = useMemo(() => {
     if (!firestore || !user) return null;
@@ -77,8 +70,8 @@ export default function ExpensesPage() {
   }, [editingExpense, form, isDialogOpen]);
 
   const onSubmit = (data: ExpenseFormData) => {
-    if (!user || !firestore || !isCurrentUserAdmin) {
-      toast({ variant: "destructive", title: "Permission Denied", description: "You do not have permission to manage expenses." });
+    if (!user || !firestore) {
+      toast({ variant: "destructive", title: "Authentication Error", description: "You must be logged in to manage expenses." });
       return;
     }
 
@@ -104,8 +97,8 @@ export default function ExpensesPage() {
   };
 
   const handleEdit = (expense: Expense) => {
-    if (!isCurrentUserAdmin) {
-      toast({ variant: "destructive", title: "Permission Denied", description: "You do not have permission to edit expenses." });
+     if (!user) {
+      toast({ variant: "destructive", title: "Authentication Error", description: "You must be logged in to edit expenses." });
       return;
     }
     setEditingExpense(expense);
@@ -113,8 +106,8 @@ export default function ExpensesPage() {
   };
 
   const handleDelete = (expenseItem: Expense) => {
-    if (!user || !firestore || !expenseItem.id || !isCurrentUserAdmin) {
-      toast({ variant: "destructive", title: "Permission Denied", description: "You do not have permission to delete expenses." });
+    if (!user || !firestore || !expenseItem.id) {
+      toast({ variant: "destructive", title: "Error", description: "Could not delete expense record." });
       return;
     }
     if (window.confirm('Are you sure you want to delete this expense record?')) {
@@ -124,8 +117,8 @@ export default function ExpensesPage() {
     }
   };
   
-  const isLoading = isLoadingProfile || isLoadingExpenses;
-  const error = profileError || expensesError;
+  const isLoading = isLoadingExpenses;
+  const error = expensesError;
 
   return (
     <AppLayout>
@@ -136,7 +129,7 @@ export default function ExpensesPage() {
               <CardTitle>Expense Records</CardTitle>
               <CardDescription>Track your business expenditures.</CardDescription>
             </div>
-            {!isLoadingProfile && isCurrentUserAdmin && (
+            {user && (
               <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) setEditingExpense(null); }}>
                 <DialogTrigger asChild>
                   <Button onClick={() => { setEditingExpense(null); form.reset(); setIsDialogOpen(true); }}>
@@ -181,7 +174,7 @@ export default function ExpensesPage() {
           <CardContent>
              {isLoading && (<div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>)}
             {error && (<div className="text-destructive flex flex-col items-center py-10"><AlertTriangle className="w-10 h-10 mb-2"/><p>Error loading expense data: {error.message}</p></div>)}
-            {!isLoading && !error && expenses && expenses.length === 0 && (<p className="text-center text-muted-foreground py-10">No expense records found. {isCurrentUserAdmin ? 'Add your first one!' : ''}</p>)}
+            {!isLoading && !error && expenses && expenses.length === 0 && (<p className="text-center text-muted-foreground py-10">No expense records found. Add your first one!</p>)}
             {!isLoading && !error && expenses && expenses.length > 0 && (
               <Table>
                 <TableHeader>
@@ -190,7 +183,7 @@ export default function ExpensesPage() {
                     <TableHead>Description</TableHead>
                     <TableHead className="text-right">Amount</TableHead>
                     <TableHead>Category</TableHead>
-                    {isCurrentUserAdmin && <TableHead>Actions</TableHead>}
+                    {user && <TableHead>Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -200,7 +193,7 @@ export default function ExpensesPage() {
                       <TableCell className="max-w-xs truncate">{expenseItem.description}</TableCell>
                       <TableCell className="text-right">{currencyFormatter.format(expenseItem.amount)}</TableCell>
                       <TableCell>{expenseItem.category || '-'}</TableCell>
-                      {!isLoadingProfile && isCurrentUserAdmin && (
+                      {user && (
                         <TableCell>
                           <div className="flex space-x-2">
                             <Button variant="ghost" size="icon" onClick={() => handleEdit(expenseItem)}><Edit3 className="h-4 w-4 text-blue-500" /></Button>

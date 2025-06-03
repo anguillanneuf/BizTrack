@@ -11,8 +11,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { IncomeFormSchema, type IncomeFormData, type Income, type UserProfile } from '@/types';
-import { useUser, useFirestore, useCollection, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking, useDoc } from '@/firebase';
+import { IncomeFormSchema, type IncomeFormData, type Income } from '@/types';
+import { useUser, useFirestore, useCollection, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
 import { collection, query, orderBy, serverTimestamp, doc } from 'firebase/firestore';
 import { PlusCircle, Edit3, Trash2, Loader2, AlertTriangle, CalendarIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -29,13 +29,6 @@ export default function IncomePage() {
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingIncome, setEditingIncome] = useState<Income | null>(null);
-
-  const userProfileRef = useMemo(() => {
-    if (!firestore || !user) return null;
-    return doc(firestore, 'users', user.uid);
-  }, [firestore, user]);
-  const { data: userProfile, isLoading: isLoadingProfile, error: profileError } = useDoc<UserProfile>(userProfileRef);
-  const isCurrentUserAdmin = useMemo(() => userProfile?.role === 'admin', [userProfile]);
 
   const incomeQuery = useMemo(() => {
     if (!firestore || !user) return null;
@@ -75,8 +68,8 @@ export default function IncomePage() {
   }, [editingIncome, form, isDialogOpen]);
 
   const onSubmit = (data: IncomeFormData) => {
-    if (!user || !firestore || !isCurrentUserAdmin) {
-      toast({ variant: "destructive", title: "Permission Denied", description: "You do not have permission to manage income." });
+    if (!user || !firestore) {
+      toast({ variant: "destructive", title: "Authentication Error", description: "You must be logged in to manage income." });
       return;
     }
 
@@ -102,8 +95,8 @@ export default function IncomePage() {
   };
 
   const handleEdit = (income: Income) => {
-    if (!isCurrentUserAdmin) {
-       toast({ variant: "destructive", title: "Permission Denied", description: "You do not have permission to edit income." });
+     if (!user) {
+       toast({ variant: "destructive", title: "Authentication Error", description: "You must be logged in to edit income." });
        return;
     }
     setEditingIncome(income);
@@ -111,8 +104,8 @@ export default function IncomePage() {
   };
 
   const handleDelete = (incomeItem: Income) => {
-    if (!user || !firestore || !incomeItem.id || !isCurrentUserAdmin) {
-        toast({ variant: "destructive", title: "Permission Denied", description: "You do not have permission to delete income." });
+    if (!user || !firestore || !incomeItem.id) {
+        toast({ variant: "destructive", title: "Error", description: "Could not delete income record." });
         return;
     }
     if (window.confirm('Are you sure you want to delete this income record?')) {
@@ -122,8 +115,8 @@ export default function IncomePage() {
     }
   };
 
-  const isLoading = isLoadingProfile || isLoadingIncomes;
-  const error = profileError || incomesError;
+  const isLoading = isLoadingIncomes;
+  const error = incomesError;
 
   return (
     <AppLayout>
@@ -134,7 +127,7 @@ export default function IncomePage() {
               <CardTitle>Income Records</CardTitle>
               <CardDescription>Manage your sources of revenue.</CardDescription>
             </div>
-            {!isLoadingProfile && isCurrentUserAdmin && (
+            {user && (
               <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) setEditingIncome(null); }}>
                 <DialogTrigger asChild>
                   <Button onClick={() => { setEditingIncome(null); form.reset(); setIsDialogOpen(true); }}>
@@ -199,7 +192,7 @@ export default function IncomePage() {
           <CardContent>
             {isLoading && (<div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>)}
             {error && (<div className="text-destructive flex flex-col items-center py-10"><AlertTriangle className="w-10 h-10 mb-2"/><p>Error loading income data: {error.message}</p></div>)}
-            {!isLoading && !error && incomes && incomes.length === 0 && (<p className="text-center text-muted-foreground py-10">No income records found. {isCurrentUserAdmin ? 'Add your first one!' : ''}</p>)}
+            {!isLoading && !error && incomes && incomes.length === 0 && (<p className="text-center text-muted-foreground py-10">No income records found. Add your first one!</p>)}
             {!isLoading && !error && incomes && incomes.length > 0 && (
               <Table>
                 <TableHeader>
@@ -208,7 +201,7 @@ export default function IncomePage() {
                     <TableHead>Description</TableHead>
                     <TableHead className="text-right">Amount</TableHead>
                     <TableHead>Category</TableHead>
-                    {isCurrentUserAdmin && <TableHead>Actions</TableHead>}
+                    {user && <TableHead>Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -218,7 +211,7 @@ export default function IncomePage() {
                       <TableCell className="max-w-xs truncate">{incomeItem.description}</TableCell>
                       <TableCell className="text-right">{currencyFormatter.format(incomeItem.amount)}</TableCell>
                       <TableCell>{incomeItem.category || '-'}</TableCell>
-                      {!isLoadingProfile && isCurrentUserAdmin && (
+                      {user && (
                         <TableCell>
                           <div className="flex space-x-2">
                             <Button variant="ghost" size="icon" onClick={() => handleEdit(incomeItem)}><Edit3 className="h-4 w-4 text-blue-500" /></Button>
