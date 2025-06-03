@@ -8,6 +8,7 @@ export const UserProfileSchema = z.object({
   firstName: z.string().optional(),
   lastName: z.string().optional(),
   companyName: z.string().optional(),
+  photoURL: z.string().url().optional(), // Added for profile picture
   role: z.enum(['admin', 'employee']).optional(),
   createdAt: z.any().optional(), // Firestore ServerTimestamp
   updatedAt: z.any().optional(), // Firestore ServerTimestamp
@@ -54,7 +55,7 @@ const AppointmentBaseSchema = z.object({
   startTime: z.string().refine((val) => !isNaN(Date.parse(val)), { message: "Invalid start time" }), // ISO string
   endTime: z.string().refine((val) => !isNaN(Date.parse(val)), { message: "Invalid end time" }), // ISO string
   location: z.string().optional(),
-  description: z.string().max(500, "Description too long.").optional(), // Max length before optional
+  description: z.string().max(500, "Description too long.").optional(),
   attendees: z.array(z.string()).optional(), // Array of user emails or IDs
   createdAt: z.any().optional(), // Firestore ServerTimestamp
   updatedAt: z.any().optional(), // Firestore ServerTimestamp
@@ -93,3 +94,28 @@ export const LoginUserSchema = z.object({
   password: z.string().min(1, { message: "Password is required." }),
 });
 export type LoginUserData = z.infer<typeof LoginUserSchema>;
+
+// Schema for updating profile information
+export const UpdateProfileInfoFormSchema = z.object({
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
+  companyName: z.string().optional(),
+  photoFile: z.custom<FileList>().optional() // For file input
+    .refine(files => files === undefined || files === null || files.length === 0 || (files.length === 1 && files[0].type.startsWith("image/")), {
+        message: "Please upload an image file.",
+    })
+    .refine(files => files === undefined || files === null || files.length === 0 || (files.length === 1 && files[0].size <= 2 * 1024 * 1024), { // 2MB limit
+        message: "Image size should be less than 2MB.",
+    })
+});
+export type UpdateProfileInfoFormData = z.infer<typeof UpdateProfileInfoFormSchema>;
+
+// Schema for changing password
+export const ChangePasswordFormSchema = z.object({
+  newPassword: z.string().min(6, { message: "New password must be at least 6 characters." }),
+  confirmPassword: z.string(),
+}).refine(data => data.newPassword === data.confirmPassword, {
+  message: "Passwords do not match.",
+  path: ["confirmPassword"],
+});
+export type ChangePasswordFormData = z.infer<typeof ChangePasswordFormSchema>;

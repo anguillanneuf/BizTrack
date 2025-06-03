@@ -1,10 +1,11 @@
+
 'use client';
 
 import React, { type ReactNode, useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { useUser, useAuth } from '@/firebase';
-import { signOut } from 'firebase/auth';
+import { useUser, useAuth, useDoc, useFirestore } from '@/firebase';
+import { signOut, updateProfile as updateAuthProfile } from 'firebase/auth';
 import { 
   SidebarProvider, 
   Sidebar, 
@@ -40,6 +41,8 @@ import {
   Menu,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import type { UserProfile } from '@/types';
+import { doc } from 'firebase/firestore';
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -54,18 +57,27 @@ const navItems = [
 
 function getPageTitle(pathname: string): string {
   const item = navItems.find(navItem => pathname.startsWith(navItem.href));
+  if (pathname.startsWith('/profile')) return 'User Profile';
   return item ? item.label : 'BizTrack';
 }
 
 export default function AppLayout({ children }: AppLayoutProps) {
   const { user, isUserLoading } = useUser();
   const auth = useAuth();
+  const firestore = useFirestore();
   const router = useRouter();
   const pathname = usePathname();
   const { toast } = useToast();
   const [sidebarOpen, setSidebarOpen] = useState(true); // Default open for desktop
 
   const currentPageTitle = getPageTitle(pathname);
+
+  const userProfileRef = useMemo(() => {
+    if (!firestore || !user) return null;
+    return doc(firestore, 'users', user.uid);
+  }, [firestore, user]);
+  const { data: userProfile } = useDoc<UserProfile>(userProfileRef);
+
 
   useEffect(() => {
     if (!isUserLoading && !user) {
@@ -92,9 +104,18 @@ export default function AppLayout({ children }: AppLayoutProps) {
     }
   };
 
-  const userDisplayName = user.displayName || user.email?.split('@')[0] || 'User';
+  const authUserDisplayName = user.displayName || user.email?.split('@')[0] || 'User';
+  const profileDisplayName = (userProfile?.firstName || userProfile?.lastName) 
+    ? `${userProfile.firstName || ''} ${userProfile.lastName || ''}`.trim() 
+    : authUserDisplayName;
+  
   const userEmail = user.email || 'No email';
-  const userAvatarFallback = userDisplayName.substring(0, 1).toUpperCase();
+  
+  const authUserPhotoURL = user.photoURL;
+  const profilePhotoURL = userProfile?.photoURL;
+  const displayPhotoURL = profilePhotoURL || authUserPhotoURL;
+
+  const userAvatarFallback = profileDisplayName.substring(0, 1).toUpperCase();
 
 
   return (
@@ -134,7 +155,13 @@ export default function AppLayout({ children }: AppLayoutProps) {
             <SidebarTrigger className="block data-[open=true]:hidden" />
             <h1 className="text-xl font-semibold text-foreground">{currentPageTitle}</h1>
           </div>
-          <UserNav user={user} onLogout={handleLogout} displayName={userDisplayName} email={userEmail} avatarFallback={userAvatarFallback} />
+          <UserNav 
+            onLogout={handleLogout} 
+            displayName={profileDisplayName} 
+            email={userEmail} 
+            avatarFallback={userAvatarFallback}
+            photoURL={displayPhotoURL}
+          />
         </header>
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 bg-background">
           {children}
@@ -145,21 +172,22 @@ export default function AppLayout({ children }: AppLayoutProps) {
 }
 
 interface UserNavProps {
-  user: any; // Firebase User type
   onLogout: () => void;
   displayName: string;
   email: string;
   avatarFallback: string;
+  photoURL?: string | null;
 }
 
-function UserNav({ user, onLogout, displayName, email, avatarFallback }: UserNavProps) {
+function UserNav({ onLogout, displayName, email, avatarFallback, photoURL }: UserNavProps) {
+  const router = useRouter();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="relative h-10 w-10 rounded-full">
           <Avatar className="h-10 w-10 border-2 border-primary/50">
-            {user.photoURL ? (
-                <AvatarImage src={user.photoURL} alt={displayName} />
+            {photoURL ? (
+                <AvatarImage src={photoURL} alt={displayName} />
             ) : (
                 <AvatarFallback className="bg-primary text-primary-foreground">{avatarFallback}</AvatarFallback>
             )}
@@ -176,7 +204,7 @@ function UserNav({ user, onLogout, displayName, email, avatarFallback }: UserNav
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem disabled>
+        <DropdownMenuItem onClick={() => router.push('/profile')}>
           <UserIcon className="mr-2 h-4 w-4" />
           <span>Profile</span>
         </DropdownMenuItem>
