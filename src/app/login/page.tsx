@@ -23,7 +23,7 @@ const GoogleIcon = ({ className }: { className?: string }) => (
     viewBox="0 0 18 18"
     fill="none"
     xmlns="http://www.w3.org/2000/svg"
-    className={className}
+    className={className} // Apply className here
   >
     <path d="M17.6402 9.20455C17.6402 8.56818 17.5818 7.95455 17.4752 7.36364H9V10.8409H13.8409C13.6352 11.9918 12.9802 12.9545 12.0452 13.5909V15.8352H14.9591C16.6752 14.2545 17.6402 11.9318 17.6402 9.20455Z" fill="#4285F4"/>
     <path d="M9.00023 7.36364C10.3052 7.36364 11.4502 7.78636 12.3802 8.64545L15.0102 6.07273C13.4602 4.65 11.4052 3.81818 9.00023 3.81818C6.54569 3.81818 4.44569 5.35455 3.59569 7.46818L6.42069 9.75909C6.88069 8.39091 7.84023 7.36364 9.00023 7.36364Z" fill="#34A853"/>
@@ -183,8 +183,8 @@ export default function LoginPage() {
             <span className="mx-2 text-xs text-muted-foreground">OR CONTINUE WITH</span>
             <hr className="flex-grow border-border" />
           </div>
-          <Button variant="outline" className="w-full" onClick={handleGoogleSignIn} disabled={isLoading}>
-            {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GoogleIcon className="h-4 w-4" />} 
+          <Button variant="outline" size="lg" className="w-full" onClick={handleGoogleSignIn} disabled={isLoading}>
+            {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GoogleIcon className="mr-2 h-4 w-4" />} 
             Sign in with Google
           </Button>
           <div className="mt-4 text-center text-sm">

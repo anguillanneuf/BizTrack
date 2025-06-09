@@ -110,14 +110,14 @@ export default function AppLayout({ children }: AppLayoutProps) {
         toast({ variant: "destructive", title: "Profile Creation Failed", description: "Could not set up your user profile." });
       });
   
-      // setDocumentNonBlocking(userProfileRef, newProfileData, { merge: false }) // merge: false to ensure it's a new doc
-      //   .then(() => {
-      //     toast({ title: "Profile Created", description: "Your user profile has been automatically set up." });
-      //   })
-      //   .catch((error) => {
-      //     console.error("AppLayout: Error creating user profile:", error);
-      //     toast({ variant: "destructive", title: "Profile Creation Failed", description: "Could not set up your user profile." });
-      //   });
+      // setDocumentNonBlocking(userProfileRef, newProfileData, { merge: false }); // merge: false to ensure it's a new doc
+        // .then(() => {
+        //   toast({ title: "Profile Created", description: "Your user profile has been automatically set up." });
+        // })
+        // .catch((error) => {
+        //   console.error("AppLayout: Error creating user profile:", error);
+        //   toast({ variant: "destructive", title: "Profile Creation Failed", description: "Could not set up your user profile." });
+        // });
     }
   }, [user, isUserLoading, userProfile, isLoadingProfile, firestore, userProfileRef, toast]);
 
