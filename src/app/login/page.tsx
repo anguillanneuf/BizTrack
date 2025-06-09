@@ -11,10 +11,21 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { useAuth, useUser, initiateEmailSignIn, initiateAnonymousSignIn } from '@/firebase';
+import { useAuth, useUser, initiateEmailSignIn, initiateAnonymousSignIn, initiateGoogleSignIn } from '@/firebase';
 import { Building2, Loader2, Eye, EyeOff } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { FirebaseError } from 'firebase/app';
+
+// Simple SVG Google icon
+const GoogleIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M17.6402 9.20455C17.6402 8.56818 17.5818 7.95455 17.4752 7.36364H9V10.8409H13.8409C13.6352 11.9918 12.9802 12.9545 12.0452 13.5909V15.8352H14.9591C16.6752 14.2545 17.6402 11.9318 17.6402 9.20455Z" fill="#4285F4"/>
+    <path d="M9.00023 7.36364C10.3052 7.36364 11.4502 7.78636 12.3802 8.64545L15.0102 6.07273C13.4602 4.65 11.4052 3.81818 9.00023 3.81818C6.54569 3.81818 4.44569 5.35455 3.59569 7.46818L6.42069 9.75909C6.88069 8.39091 7.84023 7.36364 9.00023 7.36364Z" fill="#34A853"/>
+    <path d="M3.59569 10.5318C3.43069 10.0364 3.33569 9.5 3.33569 8.95455C3.33569 8.40909 3.43069 7.87273 3.59569 7.38182L0.770689 5.09091C0.270233 6.12273 0 7.29091 0 8.95455C0 10.6182 0.270233 11.7864 0.770689 12.8182L3.59569 10.5318Z" fill="#FBBC05"/>
+    <path d="M9.00023 14.1818C10.4302 14.1818 11.6352 13.7318 12.5402 13.05L15.1202 15.5773C13.5902 16.9273 11.4352 17.7273 9.00023 17.7273C6.34023 17.7273 4.03523 16.0136 2.61023 13.7364L5.50523 11.3909C6.07023 13.05 7.39523 14.1818 9.00023 14.1818Z" fill="#EA4335"/>
+  </svg>
+);
+
 
 export default function LoginPage() {
   const auth = useAuth();
@@ -42,14 +53,7 @@ export default function LoginPage() {
     setIsLoading(true);
     try {
       initiateEmailSignIn(auth, data.email, data.password);
-      // Non-blocking, so navigation is handled by onAuthStateChanged via useUser hook
-      // For immediate feedback (though not truly knowing success yet):
       toast({ title: 'Login Initiated', description: 'Checking your credentials...' });
-      // The useEffect above will handle redirection on successful auth state change.
-      // If there's an error, it's caught by the auth listener or Firebase.
-      // However, initiateEmailSignIn doesn't return a promise that resolves on success/failure of login itself.
-      // We rely on onAuthStateChanged. For more direct feedback, we might need to listen to signInWithEmailAndPassword's promise.
-      // For now, this setup implies optimistic UI and relies on the global auth state.
     } catch (error) {
       console.error('Login error:', error);
       let errorMessage = 'Failed to login. Please check your credentials.';
@@ -61,20 +65,10 @@ export default function LoginPage() {
         }
       }
       toast({ variant: 'destructive', title: 'Login Failed', description: errorMessage });
-      setIsLoading(false);
+      setIsLoading(false); // Ensure loading stops on direct error
     }
-    // setIsLoading will be set to false by the auth state change effect or error handling.
-    // But for UX, if login *fails* without throwing (which is unusual for direct SDK calls but possible with wrappers),
-    // we might need a timeout or direct error handling from the Firebase function if it were awaited.
-    // Since we are using non-blocking, we'll assume the global state will update and loading state might persist until then.
-    // To improve, we could `await signInWithEmailAndPassword` here and handle its specific promise.
-    // Given the guideline "NEVER await for mutation calls", this is tricky for login feedback.
-    // Let's try to provide some feedback, and ensure loading stops.
-    // Simulate a delay for non-blocking login, then check auth state or stop loading.
-    // This is not ideal. The guideline against awaiting mutations usually applies to Firestore, less strictly to auth, but let's follow.
-    // The user will see "Login Initiated" and then either redirected or an error toast if auth listener picks up an issue.
-    // The form's isLoading state is tricky here. Let's set it to false after a short delay to allow auth state to propagate.
-    setTimeout(() => setIsLoading(false), 3000); // Fallback to stop loading
+    // Fallback to stop loading if auth state doesn't change quickly
+    setTimeout(() => { if (isLoading) setIsLoading(false); }, 3000);
   };
   
   const handleAnonymousSignIn = () => {
@@ -87,7 +81,30 @@ export default function LoginPage() {
       toast({ variant: 'destructive', title: 'Login Failed', description: 'Could not sign in anonymously.' });
       setIsLoading(false);
     }
-     setTimeout(() => setIsLoading(false), 3000);
+    setTimeout(() => { if (isLoading) setIsLoading(false); }, 3000);
+  };
+
+  const handleGoogleSignIn = () => {
+    setIsLoading(true);
+    try {
+      initiateGoogleSignIn(auth);
+      toast({ title: 'Google Sign-In Initiated', description: 'Redirecting to Google...' });
+    } catch (error) {
+      console.error('Google Sign-In error:', error);
+      let errorMessage = 'Could not sign in with Google.';
+      if (error instanceof FirebaseError) {
+        // Handle specific Firebase errors for Google Sign-In if any
+        if (error.code === 'auth/popup-closed-by-user') {
+          errorMessage = 'Google Sign-In cancelled.';
+        } else if (error.code === 'auth/network-request-failed') {
+          errorMessage = 'Network error during Google Sign-In. Please check your connection.';
+        }
+      }
+      toast({ variant: 'destructive', title: 'Google Sign-In Failed', description: errorMessage });
+      setIsLoading(false);
+    }
+    // Fallback to stop loading, popup closure might not trigger auth state change if no user interaction.
+    setTimeout(() => { if (isLoading) setIsLoading(false); }, 5000);
   };
 
 
@@ -111,7 +128,7 @@ export default function LoginPage() {
         </CardHeader>
         <CardContent>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <FormField
                 control={form.control}
                 name="email"
@@ -155,6 +172,15 @@ export default function LoginPage() {
               </Button>
             </form>
           </Form>
+          <div className="my-4 flex items-center">
+            <hr className="flex-grow border-border" />
+            <span className="mx-2 text-xs text-muted-foreground">OR CONTINUE WITH</span>
+            <hr className="flex-grow border-border" />
+          </div>
+          <Button variant="outline" className="w-full" onClick={handleGoogleSignIn} disabled={isLoading}>
+            {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GoogleIcon />} 
+            Sign in with Google
+          </Button>
           <div className="mt-4 text-center text-sm">
             <Button variant="link" onClick={handleAnonymousSignIn} disabled={isLoading} className="px-0 text-primary">
               Sign in anonymously

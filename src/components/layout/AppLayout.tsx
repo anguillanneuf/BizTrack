@@ -1,11 +1,11 @@
 
 'use client';
 
-import React, { type ReactNode, useEffect, useState } from 'react';
+import React, { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { useUser, useAuth, useDoc, useFirestore } from '@/firebase';
-import { signOut, updateProfile as updateAuthProfile } from 'firebase/auth';
+import { useUser, useAuth, useDoc, useFirestore, setDocumentNonBlocking } from '@/firebase';
+import { signOut } from 'firebase/auth';
 import { 
   SidebarProvider, 
   Sidebar, 
@@ -42,7 +42,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { UserProfile } from '@/types';
-import { doc } from 'firebase/firestore';
+import { doc, serverTimestamp } from 'firebase/firestore';
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -76,7 +76,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
     if (!firestore || !user) return null;
     return doc(firestore, 'users', user.uid);
   }, [firestore, user]);
-  const { data: userProfile } = useDoc<UserProfile>(userProfileRef);
+  const { data: userProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(userProfileRef);
 
 
   useEffect(() => {
@@ -84,6 +84,34 @@ export default function AppLayout({ children }: AppLayoutProps) {
       router.replace('/login');
     }
   }, [user, isUserLoading, router]);
+
+  // Effect to create user profile document if it doesn't exist (e.g., after new social sign-in)
+  useEffect(() => {
+    if (user && !isUserLoading && firestore && userProfileRef && userProfile === null && !isLoadingProfile) {
+      // User is authenticated, Firestore is available, ref is defined, 
+      // profile doc explicitly does not exist (null, not undefined), and not currently loading profile.
+      console.log("AppLayout: Attempting to create missing user profile for UID:", user.uid);
+      const newProfileData: UserProfile = {
+        id: user.uid,
+        email: user.email || '', // Google sign-in provides email
+        firstName: user.displayName?.split(' ')[0] || '',
+        lastName: user.displayName?.split(' ').slice(1).join(' ') || '',
+        photoURL: user.photoURL || '',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+      
+      setDocumentNonBlocking(userProfileRef, newProfileData, { merge: false }) // merge: false to ensure it's a new doc
+        .then(() => {
+          toast({ title: "Profile Created", description: "Your user profile has been automatically set up." });
+        })
+        .catch((error) => {
+          console.error("AppLayout: Error creating user profile:", error);
+          toast({ variant: "destructive", title: "Profile Creation Failed", description: "Could not set up your user profile." });
+        });
+    }
+  }, [user, isUserLoading, userProfile, isLoadingProfile, firestore, userProfileRef, toast]);
+
 
   if (isUserLoading || !user) {
     return (
@@ -105,17 +133,18 @@ export default function AppLayout({ children }: AppLayoutProps) {
   };
 
   const authUserDisplayName = user.displayName || user.email?.split('@')[0] || 'User';
-  const profileDisplayName = (userProfile?.firstName || userProfile?.lastName) 
+  const profileDisplayNameFromDoc = (userProfile?.firstName || userProfile?.lastName) 
     ? `${userProfile.firstName || ''} ${userProfile.lastName || ''}`.trim() 
-    : authUserDisplayName;
+    : null;
   
+  const displayName = profileDisplayNameFromDoc || authUserDisplayName;
   const userEmail = user.email || 'No email';
   
   const authUserPhotoURL = user.photoURL;
-  const profilePhotoURL = userProfile?.photoURL;
-  const displayPhotoURL = profilePhotoURL || authUserPhotoURL;
+  const profilePhotoURLFromDoc = userProfile?.photoURL;
+  const displayPhotoURL = profilePhotoURLFromDoc || authUserPhotoURL;
 
-  const userAvatarFallback = profileDisplayName.substring(0, 1).toUpperCase();
+  const userAvatarFallback = displayName.substring(0, 1).toUpperCase();
 
 
   return (
@@ -157,7 +186,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
           </div>
           <UserNav 
             onLogout={handleLogout} 
-            displayName={profileDisplayName} 
+            displayName={displayName} 
             email={userEmail} 
             avatarFallback={userAvatarFallback}
             photoURL={displayPhotoURL}
@@ -187,7 +216,7 @@ function UserNav({ onLogout, displayName, email, avatarFallback, photoURL }: Use
         <Button variant="ghost" className="relative h-10 w-10 rounded-full">
           <Avatar className="h-10 w-10 border-2 border-primary/50">
             {photoURL ? (
-                <AvatarImage src={photoURL} alt={displayName} />
+                <AvatarImage src={photoURL} alt={displayName} data-ai-hint="user avatar" />
             ) : (
                 <AvatarFallback className="bg-primary text-primary-foreground">{avatarFallback}</AvatarFallback>
             )}
