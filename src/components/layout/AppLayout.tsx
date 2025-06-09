@@ -42,7 +42,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { UserProfile } from '@/types';
-import { doc, serverTimestamp } from 'firebase/firestore';
+import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -101,14 +101,23 @@ export default function AppLayout({ children }: AppLayoutProps) {
         updatedAt: serverTimestamp(),
       };
       
-      setDocumentNonBlocking(userProfileRef, newProfileData, { merge: false }) // merge: false to ensure it's a new doc
-        .then(() => {
-          toast({ title: "Profile Created", description: "Your user profile has been automatically set up." });
-        })
-        .catch((error) => {
-          console.error("AppLayout: Error creating user profile:", error);
-          toast({ variant: "destructive", title: "Profile Creation Failed", description: "Could not set up your user profile." });
-        });
+      setDoc(userProfileRef, newProfileData, { merge: false })
+      .then(() => {
+        toast({ title: "Profile Created", description: "Your user profile has been automatically set up." });
+      })
+      .catch((error) => {
+        console.error("AppLayout: Error creating user profile:", error);
+        toast({ variant: "destructive", title: "Profile Creation Failed", description: "Could not set up your user profile." });
+      });
+  
+      // setDocumentNonBlocking(userProfileRef, newProfileData, { merge: false }) // merge: false to ensure it's a new doc
+      //   .then(() => {
+      //     toast({ title: "Profile Created", description: "Your user profile has been automatically set up." });
+      //   })
+      //   .catch((error) => {
+      //     console.error("AppLayout: Error creating user profile:", error);
+      //     toast({ variant: "destructive", title: "Profile Creation Failed", description: "Could not set up your user profile." });
+      //   });
     }
   }, [user, isUserLoading, userProfile, isLoadingProfile, firestore, userProfileRef, toast]);
 

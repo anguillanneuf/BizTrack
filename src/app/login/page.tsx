@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -17,8 +18,13 @@ import { useToast } from '@/hooks/use-toast';
 import { FirebaseError } from 'firebase/app';
 
 // Simple SVG Google icon
-const GoogleIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+const GoogleIcon = ({ className }: { className?: string }) => (
+  <svg
+    viewBox="0 0 18 18"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    className={className}
+  >
     <path d="M17.6402 9.20455C17.6402 8.56818 17.5818 7.95455 17.4752 7.36364H9V10.8409H13.8409C13.6352 11.9918 12.9802 12.9545 12.0452 13.5909V15.8352H14.9591C16.6752 14.2545 17.6402 11.9318 17.6402 9.20455Z" fill="#4285F4"/>
     <path d="M9.00023 7.36364C10.3052 7.36364 11.4502 7.78636 12.3802 8.64545L15.0102 6.07273C13.4602 4.65 11.4052 3.81818 9.00023 3.81818C6.54569 3.81818 4.44569 5.35455 3.59569 7.46818L6.42069 9.75909C6.88069 8.39091 7.84023 7.36364 9.00023 7.36364Z" fill="#34A853"/>
     <path d="M3.59569 10.5318C3.43069 10.0364 3.33569 9.5 3.33569 8.95455C3.33569 8.40909 3.43069 7.87273 3.59569 7.38182L0.770689 5.09091C0.270233 6.12273 0 7.29091 0 8.95455C0 10.6182 0.270233 11.7864 0.770689 12.8182L3.59569 10.5318Z" fill="#FBBC05"/>
@@ -178,7 +184,7 @@ export default function LoginPage() {
             <hr className="flex-grow border-border" />
           </div>
           <Button variant="outline" className="w-full" onClick={handleGoogleSignIn} disabled={isLoading}>
-            {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GoogleIcon />} 
+            {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GoogleIcon className="h-4 w-4" />} 
             Sign in with Google
           </Button>
           <div className="mt-4 text-center text-sm">
