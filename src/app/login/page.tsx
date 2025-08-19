@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -16,23 +17,6 @@ import { useAuth, useUser, initiateEmailSignIn, initiateAnonymousSignIn, initiat
 import { Building2, Loader2, Eye, EyeOff } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { FirebaseError } from 'firebase/app';
-
-// Simple SVG Google icon
-const GoogleIcon = ({ className }: { className?: string }) => (
-    <svg
-    // version="1.1"
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 48 48" 
-    // xmlns:xlink="http://www.w3.org/1999/xlink" 
-    className={className} 
-    >
-    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
-    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
-    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
-    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
-    <path fill="none" d="M0 0h48v48H0z"></path>
-  </svg>
-);
 
 
 export default function LoginPage() {
@@ -92,26 +76,30 @@ export default function LoginPage() {
     setTimeout(() => { if (isLoading) setIsLoading(false); }, 3000);
   };
 
-  const handleGoogleSignIn = () => {
+  const handleGoogleSignIn = async () => {
     setIsLoading(true);
     try {
-      initiateGoogleSignIn(auth);
-      toast({ title: 'Google Sign-In Initiated', description: 'Redirecting to Google...' });
+      toast({ title: 'Google Sign-In Initiated', description: 'Please follow the prompts to sign in with Google...' });
+      await initiateGoogleSignIn(auth);
+      // The function will handle popup vs redirect. If it redirects, the loading state
+      // on this page will be irrelevant as the page navigates away.
+      // If popup succeeds, the onAuthStateChanged listener will handle redirection.
     } catch (error) {
       console.error('Google Sign-In error:', error);
       let errorMessage = 'Could not sign in with Google.';
       if (error instanceof FirebaseError) {
-        // Handle specific Firebase errors for Google Sign-In if any
-        if (error.code === 'auth/popup-closed-by-user') {
-          errorMessage = 'Google Sign-In cancelled.';
-        } else if (error.code === 'auth/network-request-failed') {
+        // NOTE: Specific error codes for popup-closed/blocked are now handled inside
+        // initiateGoogleSignIn. This block will catch other errors.
+        if (error.code === 'auth/network-request-failed') {
           errorMessage = 'Network error during Google Sign-In. Please check your connection.';
+        } else if (error.code === 'auth/account-exists-with-different-credential') {
+            errorMessage = 'An account already exists with the same email address but different sign-in credentials.';
         }
       }
       toast({ variant: 'destructive', title: 'Google Sign-In Failed', description: errorMessage });
       setIsLoading(false);
     }
-    // Fallback to stop loading, popup closure might not trigger auth state change if no user interaction.
+    // A fallback for when popups are used and closed without error.
     setTimeout(() => { if (isLoading) setIsLoading(false); }, 5000);
   };
 
@@ -186,7 +174,7 @@ export default function LoginPage() {
             <hr className="flex-grow border-border" />
           </div>
           <Button variant="outline" size="lg" className="w-full" onClick={handleGoogleSignIn} disabled={isLoading}>
-            {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GoogleIcon className="mr-2 h-4 w-4" />} 
+            {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Image src="https://developers.google.com/identity/images/g-logo.png" alt="Google" width={20} height={20} className="mr-2" />} 
             Sign in with Google
           </Button>
           <div className="mt-4 text-center text-sm">

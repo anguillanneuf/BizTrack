@@ -8,6 +8,9 @@ import {
   signInAnonymously,
   signInWithPopup,
   GoogleAuthProvider,
+  signInWithRedirect,
+  getRedirectResult,
+  UserCredential,
 } from 'firebase/auth';
 
 /**
@@ -48,16 +51,39 @@ export function initiateAnonymousSignIn(auth: Auth) {
 }
 
 /**
- * Initiates Google Sign-In using a popup.
- * Does NOT await the operation internally.
+ * Initiates Google Sign-In using a popup, with a redirect fallback.
  */
-export function initiateGoogleSignIn(auth: Auth) {
+export async function initiateGoogleSignIn(auth: Auth) {
   const provider = new GoogleAuthProvider();
-  signInWithPopup(auth, provider)
-    .catch(error => {
-      console.error(`Google sign-in error:`, error);
-      // Specific error handling (e.g., auth/popup-closed-by-user) can be done
-      // in the component calling this, based on the error object.
-    });
-  // Execution continues immediately. The auth state listener will handle the result.
+  try {
+    // We await here to catch the error and decide on the fallback.
+    await signInWithPopup(auth, provider);
+  } catch (error: any) {
+    // If popup is blocked or closed by user, fall back to redirect method.
+    if (error.code === 'auth/popup-blocked' || error.code === 'auth/popup-closed-by-user') {
+      console.log('Popup failed, falling back to redirect.');
+      // The page will redirect, and the result is handled by getRedirectResult on page load.
+      await signInWithRedirect(auth, provider);
+    } else {
+      console.error('Google Sign-In error:', error);
+      // For other errors, re-throw or handle as needed. This will be caught by the component.
+      throw error;
+    }
+  }
+}
+
+/**
+ * Checks for a redirect result from Google Sign-In.
+ * This should be called when the application loads (e.g., in AppLayout) to complete
+ * the sign-in flow after a redirect.
+ * Returns the UserCredential if sign-in was successful, otherwise null.
+ */
+export async function checkGoogleRedirectResult(auth: Auth): Promise<UserCredential | null> {
+    try {
+        const result = await getRedirectResult(auth);
+        return result;
+    } catch (error) {
+        console.error("Error getting redirect result:", error);
+        return null;
+    }
 }

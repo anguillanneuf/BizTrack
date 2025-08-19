@@ -4,7 +4,7 @@
 import React, { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { useUser, useAuth, useDoc, useFirestore, setDocumentNonBlocking } from '@/firebase';
+import { useUser, useAuth, useDoc, useFirestore, setDocumentNonBlocking, checkGoogleRedirectResult } from '@/firebase';
 import { signOut } from 'firebase/auth';
 import { 
   SidebarProvider, 
@@ -81,9 +81,20 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
   useEffect(() => {
     if (!isUserLoading && !user) {
-      router.replace('/login');
+      // Before redirecting to login, check for a redirect result
+      checkGoogleRedirectResult(auth)
+        .then(result => {
+          if (!result) { // If no result, then proceed to login
+            router.replace('/login');
+          }
+          // If there is a result, onAuthStateChanged will fire and handle the user state.
+        })
+        .catch(() => {
+          // If there's an error checking, just go to login.
+          router.replace('/login');
+        });
     }
-  }, [user, isUserLoading, router]);
+  }, [user, isUserLoading, router, auth]);
 
   // Effect to create user profile document if it doesn't exist (e.g., after new social sign-in)
   useEffect(() => {
@@ -110,7 +121,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
         toast({ variant: "destructive", title: "Profile Creation Failed", description: "Could not set up your user profile." });
       });
   
-      // setDocumentNonBlocking(userProfileRef, newProfileData, { merge: false }); // merge: false to ensure it's a new doc
+      // setDocumentNonBlocking(userProfileRef, newProfileData, { merge: false }) // merge: false to ensure it's a new doc
         // .then(() => {
         //   toast({ title: "Profile Created", description: "Your user profile has been automatically set up." });
         // })
