@@ -4,6 +4,7 @@ import { firebaseConfig } from '@/firebase/config';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, connectAuthEmulator } from 'firebase/auth';
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore'
+import { getStorage, connectStorageEmulator} from 'firebase/storage'
 
 // IMPORTANT: DO NOT MODIFY THIS FUNCTION
 // This function uses a specific configuration to set up the emulators in a cloud
@@ -23,16 +24,18 @@ export function initializeFirebase() {
       // populate the FirebaseOptions in production. It is critical that the initializeApp()
       // function is called without arguments on the next line inside this
       // `if (process.env.NODE_ENV === "production")` check
-      const firebaseApp = initializeApp();
+      const firebaseApp = initializeApp(firebaseConfig);
       const auth = getAuth(firebaseApp);
       const firestore = getFirestore(firebaseApp);
-      return { firebaseApp, auth, firestore };
+      const storage = getStorage(firebaseApp);
+      return { firebaseApp, auth, firestore, storage };
     } else {
       // When not in production, initializeApp should be called with the provided firebaseConfig
       // object that was imported.
       const firebaseApp = initializeApp(firebaseConfig);
       const auth = getAuth(firebaseApp);
       const firestore = getFirestore(firebaseApp);
+      const storage = getStorage(firebaseApp);
       // This environment variable value contains the full domain URL and never a localhost value.
       // This domain looks something like: 8080-firebase-studio-174474.cluster-krbdp4txefbbsv3zfyg3a4xp6y.cloudworkstations.dev
       const firestoreHost = process.env.NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST!;
@@ -45,7 +48,10 @@ export function initializeFirebase() {
       // The auth emulator requires "https" since it is running from a cloud hosting
       // environment, served on a full domain.
       connectAuthEmulator(auth, `https://${authHost}:443`);
-      return { firebaseApp, auth, firestore };
+      
+      const storageHost = process.env.NEXT_PUBLIC_STORAGE_EMULATOR_HOST!;
+      connectStorageEmulator(storage, storageHost, 443);
+      return { firebaseApp, auth, firestore, storage };
     }
   }
 
@@ -53,7 +59,8 @@ export function initializeFirebase() {
   const firebaseApp = getApp();
   const auth = getAuth(firebaseApp);
   const firestore = getFirestore(firebaseApp);
-  return { firebaseApp, auth, firestore };
+  const storage = getStorage(firebaseApp);
+  return { firebaseApp, auth, firestore, storage };
 }
 
 export * from './provider';

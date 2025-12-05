@@ -17,7 +17,7 @@
   services.firebase.emulators = {
     detect = true;
     projectId = "demo-app";
-    services = ["auth" "firestore"];
+    services = ["auth" "firestore" "storage"];
   };
   services.pubsub.enable = true;
   idx = {
